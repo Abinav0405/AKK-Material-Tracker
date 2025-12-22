@@ -28,12 +28,15 @@ export default function RequestPortal() {
         refetchInterval: 3000,
     });
 
+    // 🔔 Notification count logic (unchanged structure)
     useEffect(() => {
         const seenIds = JSON.parse(localStorage.getItem('seenRequestIds') || '[]');
-        const newApprovals = transactions.filter(t => 
-            (t.approval_status === 'approved' || t.approval_status === 'declined') && 
+
+        const newApprovals = transactions.filter(t =>
+            (t.approval_status === 'approved' || t.approval_status === 'declined') &&
             !seenIds.includes(t.id)
         );
+
         setNotificationCount(newApprovals.length);
     }, [transactions]);
 
@@ -48,35 +51,62 @@ export default function RequestPortal() {
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <Link to={createPageUrl('Home')}>
-                            <Button 
-                                variant="ghost" 
+                            <Button
+                                variant="ghost"
                                 size="icon"
                                 className="text-white hover:bg-white/10"
                             >
                                 <ArrowLeft className="w-5 h-5" />
                             </Button>
                         </Link>
-                        <img 
-                            src="/akk logo.jpg" // or use Supabase URL if preferred
+                        <img
+                            src="/akk logo.jpg"
                             alt="AKK Engineering Logo"
                             className="h-12 w-12 md:h-16 md:w-16 object-contain"
                         />
                         <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                            <h1
+                                className="text-2xl md:text-3xl font-bold tracking-tight"
+                                style={{ fontFamily: 'Calibri, sans-serif' }}
+                            >
                                 AKK ENGINEERING PTE. LTD.
                             </h1>
-                            <p className="text-slate-300 text-xs mt-1" style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}>
+                            <p
+                                className="text-slate-300 text-xs mt-1"
+                                style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}
+                            >
                                 15 Kaki Bukit Rd 4, #01-50, Singapore 417808
                             </p>
                         </div>
                     </div>
-                    <Link to={createPageUrl('RequestHistory')}>
-                        <Button 
-                            variant="outline" 
+
+                    {/* History Button with Notification Badge */}
+                    <Link
+                        to={createPageUrl('RequestHistory')}
+                        onClick={() => {
+                            // mark all approved / declined as seen
+                            const approvedOrDeclinedIds = transactions
+                                .filter(t =>
+                                    t.approval_status === 'approved' ||
+                                    t.approval_status === 'declined'
+                                )
+                                .map(t => t.id);
+
+                            localStorage.setItem(
+                                'seenRequestIds',
+                                JSON.stringify(approvedOrDeclinedIds)
+                            );
+
+                            setNotificationCount(0);
+                        }}
+                    >
+                        <Button
+                            variant="outline"
                             className="border-white/30 text-white hover:bg-white/10 bg-transparent relative"
                         >
                             <History className="w-4 h-4 mr-2" />
                             <span className="hidden sm:inline">View History</span>
+
                             {notificationCount > 0 && (
                                 <Badge className="absolute -top-2 -right-2 bg-red-600 text-white h-5 w-5 flex items-center justify-center p-0 text-xs">
                                     {notificationCount > 4 ? '4+' : notificationCount}
@@ -111,10 +141,7 @@ export default function RequestPortal() {
                             {/* Selection Cards */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                                 {/* Take Materials */}
-                                <motion.div
-                                    whileHover={{ scale: 1.02, y: -4 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
+                                <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }}>
                                     <Card
                                         onClick={() => setActiveForm('take')}
                                         className="cursor-pointer border-0 shadow-xl bg-white overflow-hidden group"
@@ -139,10 +166,7 @@ export default function RequestPortal() {
                                 </motion.div>
 
                                 {/* Return Materials */}
-                                <motion.div
-                                    whileHover={{ scale: 1.02, y: -4 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
+                                <motion.div whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }}>
                                     <Card
                                         onClick={() => setActiveForm('return')}
                                         className="cursor-pointer border-0 shadow-xl bg-white overflow-hidden group"
