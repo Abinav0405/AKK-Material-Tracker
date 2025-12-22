@@ -57,15 +57,17 @@ export default function RequestPortal() {
                             </Button>
                         </Link>
                         <img 
-                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693f9bfa0ecf7ec8a55925fd/f4b1b086f_akklogo.jpg"
+                            src="/akk logo.jpg" // or use Supabase URL if preferred
                             alt="AKK Engineering Logo"
                             className="h-12 w-12 md:h-16 md:w-16 object-contain"
                         />
                         <div>
-                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                                AKK Engineering
+                            <h1 className="text-2xl md:text-3xl font-bold tracking-tight" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                                AKK ENGINEERING PTE. LTD.
                             </h1>
-                            <p className="text-slate-300 text-sm mt-1">Pte. Ltd.</p>
+                            <p className="text-slate-300 text-xs mt-1" style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}>
+                                15 Kaki Bukit Rd 4, #01-50, Singapore 417808
+                            </p>
                         </div>
                     </div>
                     <Link to={createPageUrl('RequestHistory')}>
@@ -179,7 +181,7 @@ export default function RequestPortal() {
             {/* Footer */}
             <footer className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-slate-200 py-3 px-4">
                 <p className="text-center text-slate-500 text-sm">
-                    © {new Date().getFullYear()} AKK Engineering Pte. Ltd. — Material Tracking System
+                    © {new Date().getFullYear()} AKK ENGINEERING PTE. LTD. — Material Tracking System
                 </p>
             </footer>
         </div>

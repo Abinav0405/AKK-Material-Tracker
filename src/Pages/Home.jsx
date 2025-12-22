@@ -13,15 +13,17 @@ export default function Home() {
             <header className="bg-[#dc6b2f] text-white py-8 px-4 shadow-lg">
                 <div className="max-w-4xl mx-auto flex items-center justify-center gap-4">
                     <img 
-                        src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693f9bfa0ecf7ec8a55925fd/f4b1b086f_akklogo.jpg"
+                        src="/akk logo.jpg"
                         alt="AKK Engineering Logo"
                         className="h-16 w-16 object-contain"
                     />
                     <div className="text-center">
-                        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-                            AKK Engineering
+                        <h1 className="text-3xl md:text-4xl font-bold tracking-tight" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                            AKK ENGINEERING PTE. LTD.
                         </h1>
-                        <p className="text-slate-200 text-lg mt-1">Pte. Ltd.</p>
+                        <p className="text-slate-200 text-sm mt-1" style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}>
+                            15 Kaki Bukit Rd 4, #01-50, Singapore 417808
+                        </p>
                     </div>
                 </div>
             </header>
@@ -96,7 +98,7 @@ export default function Home() {
             {/* Footer */}
             <footer className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-slate-200 py-3 px-4">
                 <p className="text-center text-slate-500 text-sm">
-                    © {new Date().getFullYear()} AKK Engineering Pte. Ltd. — Material Tracking System
+                    © {new Date().getFullYear()} AKK ENGINEERING PTE. LTD. — Material Tracking System
                 </p>
             </footer>
         </div>

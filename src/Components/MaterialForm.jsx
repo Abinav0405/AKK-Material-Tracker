@@ -9,20 +9,33 @@ import { format } from "date-fns";
 import MaterialInput from "./MaterialInput";
 import { supabase } from "@/Components/supbase";
 import { toast } from "sonner";
+import { sendBrowserNotification } from "@/lib/emailNotification";
 
-export default function MaterialForm({ type, onBack, onSuccess }) {
+export default function MaterialForm({ type, onBack, onSuccess, editMode = false, existingTransaction = null, onDelete = null }) {
     const isReturn = type === 'return';
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-    const [formData, setFormData] = useState({
-        worker_name: '',
-        worker_id: '',
-        transaction_date: format(new Date(), 'yyyy-MM-dd'),
-        transaction_time: format(new Date(), 'HH:mm'),
-        notes: ''
-    });
-    
-    const [materials, setMaterials] = useState([{ name: '', quantity: 1, unit: 'pcs' }]);
+
+    const [formData, setFormData] = useState(
+        editMode && existingTransaction ? {
+            worker_name: existingTransaction.worker_name || '',
+            worker_id: existingTransaction.worker_id || '',
+            transaction_date: existingTransaction.transaction_date || format(new Date(), 'yyyy-MM-dd'),
+            transaction_time: existingTransaction.transaction_time || format(new Date(), 'HH:mm'),
+            notes: existingTransaction.notes || ''
+        } : {
+            worker_name: '',
+            worker_id: '',
+            transaction_date: format(new Date(), 'yyyy-MM-dd'),
+            transaction_time: format(new Date(), 'HH:mm'),
+            notes: ''
+        }
+    );
+
+    const [materials, setMaterials] = useState(
+        editMode && existingTransaction?.materials?.length > 0 
+            ? existingTransaction.materials 
+            : [{ name: '', quantity: 1, unit: 'pcs' }]
+    );
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -30,13 +43,13 @@ export default function MaterialForm({ type, onBack, onSuccess }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
+
         // Validation
         if (!formData.worker_name.trim() || !formData.worker_id.trim()) {
             toast.error('Please fill in worker name and ID');
             return;
         }
-        
+
         const validMaterials = materials.filter(m => m.name.trim());
         if (validMaterials.length === 0) {
             toast.error('Please add at least one material');
@@ -44,26 +57,55 @@ export default function MaterialForm({ type, onBack, onSuccess }) {
         }
 
         setIsSubmitting(true);
-        
+
         try {
-            const transaction = {
-                ...formData,
-                transaction_type: type,
-                materials: validMaterials,
-                approval_status: 'pending'
-            };
+            if (editMode && existingTransaction) {
+                const updatedTransaction = { ...formData, materials: validMaterials };
 
-            const { error } = await supabase
-                .from('transactions')
-                .insert([transaction]);
+                const { error } = await supabase
+                    .from('transactions')
+                    .update(updatedTransaction)
+                    .eq('id', existingTransaction.id);
 
-            if (error) throw error;
+                if (error) throw error;
 
-            toast.success(`Request submitted successfully! Awaiting approval.`);
+                toast.success('Request updated successfully!');
+            } else {
+                const transaction = {
+                    ...formData,
+                    transaction_type: type,
+                    materials: validMaterials,
+                    approval_status: 'pending'
+                };
+
+                const { data: insertedData, error } = await supabase
+                    .from('transactions')
+                    .insert([transaction])
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // Send browser notification if admin is online
+                try {
+                    const { data: adminStatusData, error: statusError } = await supabase
+                        .from('admin_status')
+                        .select('is_online, admin_email')
+                        .limit(1);
+
+                    if (!statusError && adminStatusData?.length > 0 && adminStatusData[0].is_online) {
+                        sendBrowserNotification(insertedData);
+                    }
+                } catch (notificationError) {
+                    console.error('Error sending notification:', notificationError);
+                }
+
+                toast.success('Request submitted successfully! Awaiting approval.');
+            }
             onSuccess();
         } catch (error) {
             console.error('Error submitting request:', error);
-            toast.error('Failed to submit request');
+            toast.error(editMode ? 'Failed to update request' : 'Failed to submit request');
         } finally {
             setIsSubmitting(false);
         }
@@ -88,18 +130,14 @@ export default function MaterialForm({ type, onBack, onSuccess }) {
                             <ArrowLeft className="w-5 h-5" />
                         </Button>
                         <div className="flex items-center gap-3">
-                            {isReturn ? (
-                                <RotateCcw className="w-6 h-6" />
-                            ) : (
-                                <Package className="w-6 h-6" />
-                            )}
+                            {isReturn ? <RotateCcw className="w-6 h-6" /> : <Package className="w-6 h-6" />}
                             <CardTitle className="text-xl font-semibold">
-                                {isReturn ? 'Return Materials' : 'Take Materials'}
+                                {editMode ? `Edit ${isReturn ? 'Return' : 'Take'} Request` : isReturn ? 'Return Materials' : 'Take Materials'}
                             </CardTitle>
                         </div>
                     </div>
                 </CardHeader>
-                
+
                 <CardContent className="p-6">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* Worker Info */}
@@ -162,23 +200,38 @@ export default function MaterialForm({ type, onBack, onSuccess }) {
                             />
                         </div>
 
-                        {/* Submit */}
-                        <Button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className={`w-full py-6 text-lg font-medium ${
-                                isReturn 
-                                    ? 'bg-emerald-600 hover:bg-emerald-700' 
-                                    : 'bg-[#f97316] hover:bg-[#ea580c]'
-                            }`}
-                        >
-                            {isSubmitting ? (
-                                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                            ) : (
-                                <Send className="w-5 h-5 mr-2" />
+                        {/* Submit / Delete */}
+                        <div className="flex gap-3">
+                            {editMode && onDelete && (
+                                <Button
+                                    type="button"
+                                    onClick={onDelete}
+                                    variant="destructive"
+                                    className="flex-1 py-6 text-lg font-medium bg-red-600 hover:bg-red-700"
+                                >
+                                    Delete Request
+                                </Button>
                             )}
-                            {isSubmitting ? 'Submitting...' : `Submit ${isReturn ? 'Return' : 'Take'} Record`}
-                        </Button>
+                            <Button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={`${editMode && onDelete ? 'flex-1' : 'w-full'} py-6 text-lg font-medium ${
+                                    isReturn 
+                                        ? 'bg-emerald-600 hover:bg-emerald-700' 
+                                        : 'bg-[#f97316] hover:bg-[#ea580c]'
+                                }`}
+                            >
+                                {isSubmitting ? (
+                                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                ) : (
+                                    <Send className="w-5 h-5 mr-2" />
+                                )}
+                                {isSubmitting 
+                                    ? (editMode ? 'Updating...' : 'Submitting...') 
+                                    : (editMode ? 'Update Request' : `Submit ${isReturn ? 'Return' : 'Take'} Record`)
+                                }
+                            </Button>
+                        </div>
                     </form>
                 </CardContent>
             </Card>

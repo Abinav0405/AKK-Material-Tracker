@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from 'xlsx';
 import { toast } from "sonner";
+import { sendBrowserNotification } from "@/lib/emailNotification";
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
@@ -49,6 +50,15 @@ export default function AdminDashboard() {
         const loggedIn = sessionStorage.getItem('adminLoggedIn');
         if (!loggedIn) {
             navigate(createPageUrl('AdminLogin'));
+        }
+
+        // Request notification permission when admin logs in
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    console.log("Notification permission granted");
+                }
+            });
         }
     }, [navigate]);
 
@@ -167,6 +177,10 @@ export default function AdminDashboard() {
                     toast.info(`${newRequests.length} new request(s) received`, {
                         description: 'Pending approval',
                     });
+                    
+                    // Send browser notification for the latest new request
+                    const latestRequest = newRequests[0];
+                    sendBrowserNotification(latestRequest);
                 }
             }
             
@@ -313,11 +327,14 @@ export default function AdminDashboard() {
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
                         th { background-color: #f2f2f2; }
+                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; }
+                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin-top: 5px; }
                     </style>
                 </head>
                 <body>
                     <div class="header">
-                        <h1>AKK Engineering Pte. Ltd.</h1>
+                        <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
+                        <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
                         <h2>Transaction Receipt</h2>
                     </div>
                     <div class="info">
@@ -392,11 +409,14 @@ export default function AdminDashboard() {
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
                         th { background-color: #f2f2f2; }
+                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; }
+                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin-top: 5px; }
                     </style>
                 </head>
                 <body>
                     <div class="header">
-                        <h1>AKK Engineering Pte. Ltd.</h1>
+                        <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
+                        <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
                         <h2>Transaction History Report</h2>
                         ${printStartDate || printEndDate ? `<p>Period: ${printStartDate || 'Start'} to ${printEndDate || 'End'}</p>` : ''}
                         ${printWorkerId ? `<p>Worker ID: ${printWorkerId}</p>` : '<p>All Workers</p>'}
@@ -461,7 +481,7 @@ export default function AdminDashboard() {
                             </Button>
                         </Link>
                         <img 
-                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693f9bfa0ecf7ec8a55925fd/f4b1b086f_akklogo.jpg"
+                            src="/akk logo.jpg"
                             alt="AKK Engineering Logo"
                             className="h-12 w-12 object-contain"
                         />
@@ -469,7 +489,12 @@ export default function AdminDashboard() {
                             <h1 className="text-2xl font-bold tracking-tight">
                                 Admin Dashboard
                             </h1>
-                            <p className="text-slate-300 text-sm">AKK Engineering Pte. Ltd.</p>
+                            <p className="text-slate-300 text-sm font-bold" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                                AKK ENGINEERING PTE. LTD.
+                            </p>
+                            <p className="text-slate-300 text-xs mt-1" style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}>
+                                15 Kaki Bukit Rd 4, #01-50, Singapore 417808
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-2">

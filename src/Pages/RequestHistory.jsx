@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from "@/Components/supbase";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/Components/ui/card";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
@@ -8,15 +8,18 @@ import { Badge } from "@/Components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { 
     ArrowLeft, Search, Package, RotateCcw, 
-    Calendar, Clock, User, Loader2, CheckCircle, XCircle, AlertCircle
+    Calendar, Clock, User, Loader2, CheckCircle, XCircle, AlertCircle, Edit2
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import MaterialForm from "@/Components/MaterialForm";
 
 export default function RequestHistory() {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [editingTransaction, setEditingTransaction] = useState(null);
+    const queryClient = useQueryClient();
 
     const { data: transactions = [], isLoading } = useQuery({
         queryKey: ['transactions'],
@@ -38,6 +41,24 @@ export default function RequestHistory() {
             localStorage.setItem('seenRequestIds', JSON.stringify(allIds));
         }
     }, [transactions, isLoading]);
+
+    const deleteMutation = useMutation({
+        mutationFn: async (id) => {
+            const { error } = await supabase
+                .from('transactions')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            setEditingTransaction(null);
+        },
+    });
+
+    const handleEditSuccess = () => {
+        setEditingTransaction(null);
+    };
 
     const filteredTransactions = transactions.filter(t => {
         const matchesSearch = 
@@ -75,7 +96,7 @@ export default function RequestHistory() {
                             </Button>
                         </Link>
                         <img 
-                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/693f9bfa0ecf7ec8a55925fd/f4b1b086f_akklogo.jpg"
+                            src="/akk logo.jpg"
                             alt="AKK Engineering Logo"
                             className="h-12 w-12 object-contain"
                         />
@@ -83,7 +104,12 @@ export default function RequestHistory() {
                             <h1 className="text-2xl font-bold tracking-tight">
                                 Request History
                             </h1>
-                            <p className="text-slate-300 text-sm">AKK Engineering Pte. Ltd.</p>
+                            <p className="text-slate-300 text-sm font-bold" style={{ fontFamily: 'Calibri, sans-serif' }}>
+                                AKK ENGINEERING PTE. LTD.
+                            </p>
+                            <p className="text-slate-300 text-xs mt-1" style={{ fontFamily: 'Aptos Narrow, Aptos, sans-serif' }}>
+                                15 Kaki Bukit Rd 4, #01-50, Singapore 417808
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -124,23 +150,33 @@ export default function RequestHistory() {
 
             {/* Requests List */}
             <div className="max-w-6xl mx-auto px-4 pb-8">
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-8 h-8 animate-spin text-[#dc6b2f]" />
-                    </div>
-                ) : filteredTransactions.length === 0 ? (
-                    <Card className="border-0 shadow-lg">
-                        <CardContent className="py-20 text-center">
-                            <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-                            <h3 className="text-xl font-semibold text-slate-700 mb-2">No Requests Found</h3>
-                            <p className="text-slate-500">
-                                {searchTerm ? 'Try a different search term' : 'Start by creating a material request'}
-                            </p>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-4">
-                        <AnimatePresence>
+                <AnimatePresence mode="wait">
+                    {editingTransaction ? (
+                        <MaterialForm
+                            key={editingTransaction.id}
+                            type={editingTransaction.transaction_type}
+                            editMode={true}
+                            existingTransaction={editingTransaction}
+                            onBack={() => setEditingTransaction(null)}
+                            onSuccess={handleEditSuccess}
+                            onDelete={() => deleteMutation.mutate(editingTransaction.id)}
+                        />
+                    ) : isLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="w-8 h-8 animate-spin text-[#dc6b2f]" />
+                        </div>
+                    ) : filteredTransactions.length === 0 ? (
+                        <Card className="border-0 shadow-lg">
+                            <CardContent className="py-20 text-center">
+                                <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+                                <h3 className="text-xl font-semibold text-slate-700 mb-2">No Requests Found</h3>
+                                <p className="text-slate-500">
+                                    {searchTerm ? 'Try a different search term' : 'Start by creating a material request'}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
                             {filteredTransactions.map((transaction, index) => (
                                 <motion.div
                                     key={transaction.id}
@@ -151,8 +187,8 @@ export default function RequestHistory() {
                                     <Card className="border-0 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                                         <div className={`h-1 ${transaction.transaction_type === 'return' ? 'bg-emerald-600' : 'bg-[#f97316]'}`} />
                                         <CardContent className="p-5">
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                <div className="flex items-start gap-4">
+                                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                                                <div className="flex items-start gap-4 flex-1">
                                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
                                                         transaction.transaction_type === 'return' 
                                                             ? 'bg-emerald-100' 
@@ -199,7 +235,7 @@ export default function RequestHistory() {
                                                     </div>
                                                 </div>
 
-                                                <div className="ml-16 md:ml-0">
+                                                <div className="ml-16 md:ml-0 flex-1">
                                                     <div className="flex flex-wrap gap-2">
                                                         {transaction.materials?.map((material, idx) => (
                                                             <Badge 
@@ -220,14 +256,27 @@ export default function RequestHistory() {
                                                         </p>
                                                     )}
                                                 </div>
+
+                                                {transaction.approval_status === 'pending' && (
+                                                    <div className="ml-16 md:ml-0">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => setEditingTransaction(transaction)}
+                                                            className="bg-blue-600 hover:bg-blue-700"
+                                                        >
+                                                            <Edit2 className="w-4 h-4 mr-1" />
+                                                            Edit
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </CardContent>
                                     </Card>
                                 </motion.div>
                             ))}
-                        </AnimatePresence>
-                    </div>
-                )}
+                        </div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     );
