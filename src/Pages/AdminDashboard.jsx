@@ -303,12 +303,15 @@ export default function AdminDashboard() {
         let matchesMaterialReturn = true;
         if (materialReturnFilter !== 'all' && t.transaction_type === 'take' && t.materials) {
             if (materialReturnFilter === 'returned') {
-                // Show only transactions where ALL materials are returned
+                // Show only take transactions where ALL materials are returned
                 matchesMaterialReturn = t.materials.every(m => m.returned === true);
             } else if (materialReturnFilter === 'not_returned') {
-                // Show only transactions where at least one material is not returned
+                // Show only take transactions where at least one material is not returned
                 matchesMaterialReturn = t.materials.some(m => m.returned !== true);
             }
+        } else if (materialReturnFilter !== 'all') {
+            // For non-take transactions (like return requests), don't show them in material return filters
+            matchesMaterialReturn = false;
         }
 
         return matchesFilter && matchesSearch && matchesDate && matchesWorkerId && matchesStatus && matchesMaterialReturn;
@@ -724,6 +727,19 @@ export default function AdminDashboard() {
                                                         >
                                                             <Printer className="w-4 h-4 mr-1" />
                                                             Print
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="destructive"
+                                                            onClick={() => {
+                                                                if (window.confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+                                                                    deleteMutation.mutate(transaction.id);
+                                                                }
+                                                            }}
+                                                            disabled={deleteMutation.isPending}
+                                                        >
+                                                            <Trash2 className="w-4 h-4 mr-1" />
+                                                            Delete
                                                         </Button>
                                                     </div>
                                                 </div>

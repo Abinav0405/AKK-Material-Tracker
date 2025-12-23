@@ -79,12 +79,15 @@ export default function RequestHistory() {
         let matchesMaterialReturn = true;
         if (materialReturnFilter !== 'all' && t.transaction_type === 'take' && t.materials) {
             if (materialReturnFilter === 'returned') {
-                // Show only transactions where ALL materials are returned
+                // Show only take transactions where ALL materials are returned
                 matchesMaterialReturn = t.materials.every(m => m.returned === true);
             } else if (materialReturnFilter === 'not_returned') {
-                // Show only transactions where at least one material is not returned
+                // Show only take transactions where at least one material is not returned
                 matchesMaterialReturn = t.materials.some(m => m.returned !== true);
             }
+        } else if (materialReturnFilter !== 'all') {
+            // For non-take transactions (like return requests), don't show them in material return filters
+            matchesMaterialReturn = false;
         }
 
         return matchesWorker && matchesSearch && matchesStatus && matchesMaterialReturn;
