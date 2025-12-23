@@ -45,22 +45,42 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
         updated[index] = { ...updated[index], reference_number: referenceNumber, loading: true };
         setMaterials(updated);
 
-        // Auto-fill material details if reference number is provided
+                // Auto-fill material details if reference number is provided
         if (referenceNumber.trim() && isReturn) {
             try {
-                // First, find the take transaction with this reference number
+                // Get current user info
+                const currentWorkerId = sessionStorage.getItem('workerId');
+                const currentWorkerName = sessionStorage.getItem('workerName');
+
+                if (!currentWorkerId) {
+                    toast.error('User session expired. Please log in again.');
+                    updated[index] = {
+                        ...updated[index],
+                        name: '',
+                        quantity: 1,
+                        available_quantity: 0,
+                        unit: 'pcs',
+                        loading: false,
+                        error: 'Please log in again'
+                    };
+                    setMaterials(updated);
+                    return;
+                }
+
+                // First, find the take transaction with this reference number that belongs to the current user
                 const { data: takeTransactions, error: takeError } = await supabase
                     .from('transactions')
                     .select('*')
                     .eq('transaction_type', 'take')
-                    .eq('approval_status', 'approved');
+                    .eq('approval_status', 'approved')
+                    .eq('worker_id', currentWorkerId); // Only allow returns for materials taken by this user
 
                 if (takeError) throw takeError;
 
                 let foundMaterial = null;
                 let takeTransaction = null;
 
-                // Search through all approved take transactions for the reference number
+                // Search through the user's approved take transactions for the reference number
                 for (const transaction of takeTransactions || []) {
                     const material = transaction.materials?.find(m =>
                         m.reference_number === referenceNumber.trim()
@@ -68,12 +88,14 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                     if (material) {
                         foundMaterial = material;
                         takeTransaction = transaction;
-                        console.log(`Found material in take transaction ${transaction.id}:`, {
+                        console.log(`Found material in user's take transaction ${transaction.id}:`, {
                             name: material.name,
                             quantity: material.quantity,
                             returned_quantity: material.returned_quantity,
                             returned: material.returned,
-                            return_declined: material.return_declined
+                            return_declined: material.return_declined,
+                            worker_id: transaction.worker_id,
+                            worker_name: transaction.worker_name
                         });
                         break;
                     }
@@ -140,7 +162,7 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                         available_quantity: 0,
                         unit: 'pcs',
                         loading: false,
-                        error: 'Reference number not found'
+                        error: 'Invalid reference number'
                     };
                     setMaterials(updated);
                 }

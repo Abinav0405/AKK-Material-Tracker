@@ -172,27 +172,31 @@ export default function AdminDashboard() {
     useEffect(() => {
         const checkNewRequests = async () => {
             if (!isLoading && transactions.length > 0 && prevTransactionsRef.current.length > 0) {
-                const newRequests = transactions.filter(t => 
-                    t.approval_status === 'pending' && 
+                // Only show notifications for admin users, not workers
+                const isAdmin = !!adminEmail;
+                if (!isAdmin) return;
+
+                const newRequests = transactions.filter(t =>
+                    t.approval_status === 'pending' &&
                     !prevTransactionsRef.current.find(pt => pt.id === t.id)
                 );
-                
+
                 if (newRequests.length > 0) {
                     toast.info(`${newRequests.length} new request(s) received`, {
                         description: 'Pending approval',
                     });
-                    
+
                     // Send browser notification for the latest new request
                     const latestRequest = newRequests[0];
                     sendBrowserNotification(latestRequest);
                 }
             }
-            
+
             prevTransactionsRef.current = transactions;
         };
 
         checkNewRequests();
-    }, [transactions, isLoading]);
+    }, [transactions, isLoading, adminEmail]);
 
     const deleteAllMutation = useMutation({
         mutationFn: async () => {
@@ -507,8 +511,11 @@ export default function AdminDashboard() {
                 <head>
                     <title>Transaction Receipt</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
+                        body { font-family: Arial, sans-serif; padding: 20px; position: relative; min-height: 100vh; }
                         .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                        .header-content { display: flex; align-items: center; justify-content: center; gap: 20px; }
+                        .logo { width: 60px; height: 60px; flex-shrink: 0; }
+                        .company-info { text-align: left; }
                         .info { margin-bottom: 20px; }
                         .info-row { display: flex; margin-bottom: 8px; }
                         .label { font-weight: bold; width: 150px; }
@@ -516,14 +523,18 @@ export default function AdminDashboard() {
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
                         th { background-color: #f2f2f2; }
-                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; }
-                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin-top: 5px; }
+                        .approval-info { position: absolute; bottom: 40px; left: 40px; text-align: left; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 10px; max-width: 300px; }
+                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; margin: 0; }
+                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin: 5px 0 0 0; }
+                        .signature-line { margin-top: 20px; border-bottom: 1px solid #000; width: 200px; }
                     </style>
                 </head>
                 <body>
                     <div class="header">
-                        <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
-                        <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
+                        <div class="company-info" style="text-align: center;">
+                            <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
+                            <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
+                        </div>
                         <h2>Transaction Receipt</h2>
                     </div>
                     <div class="info">
@@ -531,8 +542,8 @@ export default function AdminDashboard() {
                         <div class="info-row"><span class="label">Status:</span> ${transaction.approval_status.toUpperCase()}</div>
                         <div class="info-row"><span class="label">Date:</span> ${transaction.transaction_date}</div>
                         <div class="info-row"><span class="label">Time:</span> ${transaction.transaction_time}</div>
-                        <div class="info-row"><span class="label">Worker Name:</span> ${transaction.worker_name}</div>
-                        <div class="info-row"><span class="label">Worker ID:</span> ${transaction.worker_id}</div>
+                        <div class="info-row"><span class="label">Requestor Name:</span> ${transaction.worker_name}</div>
+                        <div class="info-row"><span class="label">Requestor ID:</span> ${transaction.worker_id}</div>
                     </div>
                     <div class="materials">
                         <h3>Materials</h3>
@@ -560,6 +571,15 @@ export default function AdminDashboard() {
                                     </table>
                     </div>
                     ${transaction.notes ? `<div style="margin-top: 20px;"><strong>Notes:</strong> ${transaction.notes}</div>` : ''}
+                    ${transaction.approval_status !== 'pending' ? `
+                        <div class="approval-info">
+                            <strong>This request was ${transaction.approval_status === 'approved' ? 'APPROVED' : 'DECLINED'}</strong>
+                            ${transaction.approved_by ? `<br>by ${transaction.approved_by}` : ''}
+                            ${transaction.approval_date ? `<br>on ${transaction.approval_date}` : ''}
+                            <div class="signature-line"></div>
+                            <div style="font-size: 10px; margin-top: 5px;">Signature</div>
+                        </div>
+                    ` : ''}
                 </body>
             </html>
         `);
@@ -641,6 +661,7 @@ export default function AdminDashboard() {
                                 </tbody>
                             </table>
                             ${t.notes ? `<div style="margin-top: 10px;"><strong>Notes:</strong> ${t.notes}</div>` : ''}
+                            ${t.approval_status !== 'pending' ? `<div style="margin-top: 10px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 5px;"><strong>${t.approval_status === 'approved' ? 'APPROVED' : 'DECLINED'}</strong> by ${t.approved_by || 'Unknown'} on ${t.approval_date || 'Unknown date'}</div>` : ''}
                         </div>
                     `).join('')}
                 </body>
