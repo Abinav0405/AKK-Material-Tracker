@@ -67,7 +67,7 @@ export default function WorkerLogin() {
                         </div>
                         <CardHeader className="p-0 text-center">
                             <CardTitle className="text-3xl font-bold mb-2">
-                                Worker Portal
+                                User Portal
                             </CardTitle>
                             <CardDescription className="text-orange-100 text-base">
                                 Access your material requests and history
@@ -105,7 +105,7 @@ export default function WorkerLogin() {
                                     className="text-sm font-semibold text-slate-700 flex items-center gap-2"
                                 >
                                     <UserCheck className="w-4 h-4" />
-                                    Worker ID
+                                    User ID
                                 </label>
                                 <Input
                                     id="workerId"
@@ -113,7 +113,7 @@ export default function WorkerLogin() {
                                     value={workerId}
                                     onChange={(e) => setWorkerId(e.target.value)}
                                     required
-                                    placeholder="Enter your worker ID"
+                                    placeholder="Enter your user ID"
                                     className="h-12 text-base border-slate-200 focus:border-[#dc6b2f] focus:ring-[#dc6b2f]/20 transition-colors"
                                 />
                             </div>

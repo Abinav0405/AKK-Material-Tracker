@@ -380,24 +380,28 @@ export default function AdminDashboard() {
                     </div>
                     <div class="materials">
                         <h3>Materials</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Material Name</th>
-                                    <th>Quantity</th>
-                                    <th>Unit</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${transaction.materials?.map(m => `
-                                    <tr>
-                                        <td>${m.name}</td>
-                                        <td>${m.quantity}</td>
-                                        <td>${m.unit}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Material Name</th>
+                                                <th>Quantity</th>
+                                                <th>Unit</th>
+                                                <th>Reference #</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${transaction.materials?.map(m => `
+                                                <tr>
+                                                    <td>${m.name}</td>
+                                                    <td>${m.quantity}</td>
+                                                    <td>${m.unit}</td>
+                                                    <td>${m.reference_number || 'N/A'}</td>
+                                                    <td>${m.returned ? `Returned (${m.return_date})` : 'Not Returned'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
                     </div>
                     ${transaction.notes ? `<div style="margin-top: 20px;"><strong>Notes:</strong> ${transaction.notes}</div>` : ''}
                 </body>
@@ -464,6 +468,8 @@ export default function AdminDashboard() {
                                         <th>Material</th>
                                         <th>Quantity</th>
                                         <th>Unit</th>
+                                        <th>Reference #</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -472,6 +478,8 @@ export default function AdminDashboard() {
                                             <td>${m.name}</td>
                                             <td>${m.quantity}</td>
                                             <td>${m.unit}</td>
+                                            <td>${m.reference_number || 'N/A'}</td>
+                                            <td>${m.returned ? `Returned (${m.return_date})` : 'Not Returned'}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
