@@ -42,46 +42,129 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
     // Auto-fill material details when reference number is entered
     const handleReferenceNumberChange = async (index, referenceNumber) => {
         const updated = [...materials];
-        updated[index] = { ...updated[index], reference_number: referenceNumber };
+        updated[index] = { ...updated[index], reference_number: referenceNumber, loading: true };
         setMaterials(updated);
 
         // Auto-fill material details if reference number is provided
         if (referenceNumber.trim() && isReturn) {
             try {
-                const { data: allTransactions, error } = await supabase
+                // First, find the take transaction with this reference number
+                const { data: takeTransactions, error: takeError } = await supabase
                     .from('transactions')
                     .select('*')
                     .eq('transaction_type', 'take')
                     .eq('approval_status', 'approved');
 
-                if (error) throw error;
+                if (takeError) throw takeError;
 
                 let foundMaterial = null;
+                let takeTransaction = null;
+
                 // Search through all approved take transactions for the reference number
-                for (const transaction of allTransactions || []) {
+                for (const transaction of takeTransactions || []) {
                     const material = transaction.materials?.find(m =>
-                        m.reference_number === referenceNumber.trim() && !m.returned
+                        m.reference_number === referenceNumber.trim()
                     );
                     if (material) {
                         foundMaterial = material;
+                        takeTransaction = transaction;
+                        console.log(`Found material in take transaction ${transaction.id}:`, {
+                            name: material.name,
+                            quantity: material.quantity,
+                            returned_quantity: material.returned_quantity,
+                            returned: material.returned,
+                            return_declined: material.return_declined
+                        });
                         break;
                     }
                 }
 
-                if (foundMaterial) {
+                if (foundMaterial && takeTransaction) {
+                    // Now calculate actually returned by checking ALL approved return transactions for this reference number
+                    const { data: returnTransactions, error: returnError } = await supabase
+                        .from('transactions')
+                        .select('*')
+                        .eq('transaction_type', 'return')
+                        .eq('approval_status', 'approved');
+
+                    if (returnError) throw returnError;
+
+                    // Find all approved returns for this reference number and sum the quantities
+                    let totalActuallyReturned = 0;
+                    for (const returnTxn of returnTransactions || []) {
+                        const returnMaterial = returnTxn.materials?.find(m =>
+                            m.reference_number === referenceNumber.trim()
+                        );
+                        if (returnMaterial && returnMaterial.return_quantity) {
+                            totalActuallyReturned += returnMaterial.return_quantity;
+                        }
+                    }
+
+                    console.log(`Calculated total actually returned from approved returns: ${totalActuallyReturned}`);
+
+                    // Calculate available quantity based on approved returns only
+                    let availableQuantity;
+                    if (foundMaterial.returned || totalActuallyReturned >= foundMaterial.quantity) {
+                        // Fully returned - nothing available
+                        availableQuantity = 0;
+                    } else {
+                        // Available = total taken - actually returned (only approved returns count)
+                        availableQuantity = Math.max(0, foundMaterial.quantity - totalActuallyReturned);
+
+                        // Debug logging
+                        console.log(`Material: ${foundMaterial.name}`);
+                        console.log(`Total taken: ${foundMaterial.quantity}`);
+                        console.log(`Actually returned (from approved returns): ${totalActuallyReturned}`);
+                        console.log(`Available: ${availableQuantity}`);
+                        console.log(`Stored returned_quantity (may be outdated): ${foundMaterial.returned_quantity}`);
+                        console.log(`Declined status: ${foundMaterial.return_declined}`);
+                    }
+
                     // Auto-fill the material details
                     updated[index] = {
                         ...updated[index],
                         name: foundMaterial.name,
                         quantity: foundMaterial.quantity,
+                        available_quantity: availableQuantity,
                         unit: foundMaterial.unit,
-                        reference_number: referenceNumber.trim()
+                        reference_number: referenceNumber.trim(),
+                        loading: false
+                    };
+                    setMaterials(updated);
+                } else {
+                    // Material not found
+                    updated[index] = {
+                        ...updated[index],
+                        name: '',
+                        quantity: 1,
+                        available_quantity: 0,
+                        unit: 'pcs',
+                        loading: false,
+                        error: 'Reference number not found'
                     };
                     setMaterials(updated);
                 }
             } catch (error) {
                 console.error('Error fetching material details:', error);
+                updated[index] = {
+                    ...updated[index],
+                    loading: false,
+                    error: 'Error loading material details'
+                };
+                setMaterials(updated);
             }
+        } else {
+            // Clear material details if reference number is empty
+            updated[index] = {
+                ...updated[index],
+                name: '',
+                quantity: 1,
+                available_quantity: 0,
+                unit: 'pcs',
+                loading: false,
+                error: ''
+            };
+            setMaterials(updated);
         }
     };
 
@@ -138,26 +221,42 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
 
             // For take requests, generate reference numbers and add tracking fields
             if (type === 'take' && !editMode) {
-                if (validMaterials.length === 1) {
-                    // Single material - random reference number
-                    processedMaterials = validMaterials.map(material => ({
+                // Ensure all materials have valid quantities (convert strings to numbers)
+                const materialsWithDefaults = validMaterials.map(material => {
+                    const qty = material.quantity;
+                    let numericQty = 1; // default
+
+                    if (typeof qty === 'string' && qty.trim() === '') {
+                        numericQty = 1; // empty string -> 1
+                    } else if (typeof qty === 'string') {
+                        const parsed = parseInt(qty.trim());
+                        numericQty = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+                    } else if (typeof qty === 'number' && qty >= 1) {
+                        numericQty = qty;
+                    }
+
+                    return {
                         ...material,
-                        reference_number: generateReferenceNumber(),
-                        returned: false,
-                        return_date: null,
-                        taken_date: format(new Date(), 'yyyy-MM-dd HH:mm')
-                    }));
-                } else {
-                    // Multiple materials - sequential reference numbers
-                    const referenceNumbers = generateSequentialReferenceNumbers(validMaterials.length);
-                    processedMaterials = validMaterials.map((material, index) => ({
-                        ...material,
-                        reference_number: referenceNumbers[index],
-                        returned: false,
-                        return_date: null,
-                        taken_date: format(new Date(), 'yyyy-MM-dd HH:mm')
-                    }));
-                }
+                        quantity: numericQty
+                    };
+                });
+
+                // Always generate sequential reference numbers for consistency
+                const referenceNumbers = generateSequentialReferenceNumbers(materialsWithDefaults.length);
+                processedMaterials = materialsWithDefaults.map((material, index) => ({
+                    ...material,
+                    reference_number: referenceNumbers[index],
+                    returned: false,
+                    returned_quantity: 0, // Track returned quantity for partial returns
+                    return_date: null,
+                    return_declined: false,
+                    return_declined_by: null,
+                    return_declined_date: null,
+                    taken_date: format(new Date(), 'yyyy-MM-dd HH:mm')
+                }));
+
+                console.log(`Generated ${referenceNumbers.length} reference numbers for take request:`, referenceNumbers);
+                console.log('Processed materials:', processedMaterials);
             }
 
             // For return requests, find and update the matching materials
@@ -170,6 +269,15 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                     toast.error('Please enter at least one reference number');
                     setIsSubmitting(false);
                     return;
+                }
+
+                // Validate return quantities
+                for (const material of materials) {
+                    if (material.reference_number && material.name && (!material.return_quantity || material.return_quantity <= 0)) {
+                        toast.error(`Please enter a valid return quantity for ${material.name}`);
+                        setIsSubmitting(false);
+                        return;
+                    }
                 }
 
                 // Find all take transactions with approved status
@@ -185,14 +293,17 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                 const transactionUpdates = new Map(); // transaction.id -> updated materials
 
                 // Process each reference number
-                for (const referenceNumber of validReferenceNumbers) {
+                for (const materialInput of materials) {
+                    const referenceNumber = materialInput.reference_number?.trim();
+                    if (!referenceNumber || !materialInput.name) continue;
+
                     let foundMaterial = null;
                     let transactionToUpdate = null;
 
                     // Search through all approved take transactions for the reference number
                     for (const transaction of allTransactions || []) {
                         const material = transaction.materials?.find(m =>
-                            m.reference_number === referenceNumber && !m.returned
+                            m.reference_number === referenceNumber
                         );
                         if (material) {
                             foundMaterial = material;
@@ -202,18 +313,34 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                     }
 
                     if (!foundMaterial || !transactionToUpdate) {
-                        toast.error(`Reference number ${referenceNumber} not found or material already returned`);
+                        toast.error(`Reference number ${referenceNumber} not found`);
                         setIsSubmitting(false);
                         return;
                     }
+
+                    // Check if trying to return more than available
+                    const alreadyReturned = foundMaterial.returned_quantity || 0;
+                    const availableToReturn = foundMaterial.quantity - alreadyReturned;
+
+                    if (materialInput.return_quantity > availableToReturn) {
+                        toast.error(`Cannot return ${materialInput.return_quantity} ${foundMaterial.unit} of ${foundMaterial.name}. Only ${availableToReturn} ${foundMaterial.unit} available to return.`);
+                        setIsSubmitting(false);
+                        return;
+                    }
+
+                    // Calculate new returned quantity
+                    const newReturnedQuantity = alreadyReturned + materialInput.return_quantity;
+                    const isFullyReturned = newReturnedQuantity >= foundMaterial.quantity;
 
                     // Add to return materials list
                     returnMaterials.push({
                         ...foundMaterial,
                         reference_number: referenceNumber,
-                        returned: true,
+                        return_quantity: materialInput.return_quantity,
+                        returned: isFullyReturned,
                         return_date: format(new Date(), 'yyyy-MM-dd HH:mm'),
-                        taken_date: foundMaterial.taken_date
+                        taken_date: foundMaterial.taken_date,
+                        returned_quantity: newReturnedQuantity
                     });
 
                     // Prepare transaction update
@@ -226,8 +353,9 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                         material.reference_number === referenceNumber
                             ? {
                                 ...material,
-                                returned: true,
-                                return_date: format(new Date(), 'yyyy-MM-dd HH:mm')
+                                returned: isFullyReturned,
+                                returned_quantity: newReturnedQuantity,
+                                return_date: isFullyReturned ? format(new Date(), 'yyyy-MM-dd HH:mm') : material.return_date
                             }
                             : material
                     );
@@ -378,30 +506,110 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                                         </div>
                                         <div className="space-y-3">
                                             {materials.map((material, index) => (
-                                                <div key={index} className="flex gap-2 items-start">
-                                                    <div className="flex-1 space-y-2">
-                                                        <Input
-                                                            placeholder="Enter reference number (e.g., 482739)"
-                                                            value={material.reference_number || ''}
-                                                            onChange={(e) => handleReferenceNumberChange(index, e.target.value)}
-                                                            className="border-slate-200 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]/20"
-                                                        />
-                                                        {material.name && (
-                                                            <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded">
-                                                                {material.name} - {material.quantity} {material.unit}
-                                                            </div>
+                                                <div key={`${index}-${material.name}-${material.reference_number}`} className="space-y-3 p-4 border border-slate-200 rounded-lg bg-slate-50/50">
+                                                    <div className="flex gap-2 items-start">
+                                                        <div className="flex-1 space-y-2">
+                                                            <label className="text-sm font-medium text-slate-700">Reference Number</label>
+                                                            <Input
+                                                                placeholder="Enter reference number (e.g., 482739)"
+                                                                value={material.reference_number || ''}
+                                                                onChange={(e) => handleReferenceNumberChange(index, e.target.value)}
+                                                                className="border-slate-200 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]/20"
+                                                            />
+                                                        </div>
+                                                        {materials.length > 1 && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => removeReferenceNumberInput(index)}
+                                                                className="text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0 mt-7"
+                                                            >
+                                                                <ArrowLeft className="w-4 h-4 rotate-45" />
+                                                            </Button>
                                                         )}
                                                     </div>
-                                                    {materials.length > 1 && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => removeReferenceNumberInput(index)}
-                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0 mt-1"
-                                                        >
-                                                            <ArrowLeft className="w-4 h-4 rotate-45" />
-                                                        </Button>
+
+                                                    {material.name && (
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                            <div className="space-y-1">
+                                                                <label className="text-sm font-medium text-slate-700">Material</label>
+                                                                <div className="text-sm text-slate-600 bg-slate-100 px-3 py-2 rounded border">
+                                                                    {material.name}
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-sm font-medium text-slate-700">Available Quantity</label>
+                                                                <div className="text-sm text-slate-600 bg-slate-100 px-3 py-2 rounded border">
+                                                                    {material.available_quantity || material.quantity} {material.unit}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {material.name && (
+                                                        <div className="space-y-2">
+                                                            <label className="text-sm font-medium text-slate-700">
+                                                                Return Quantity <span className="text-red-500">*</span>
+                                                            </label>
+                                                            <div className="flex gap-2 items-center">
+                                                                <Input
+                                                                    type="number"
+                                                                    placeholder="Enter quantity to return"
+                                                                    value={material.return_quantity ?? ''}
+                                                                    onChange={(e) => {
+                                                                        const inputValue = e.target.value;
+
+                                                                        // Store the raw input value without any parsing or validation
+                                                                        // This prevents any automatic changes to what the user types
+                                                                        const updated = [...materials];
+                                                                        updated[index] = { ...updated[index], return_quantity: inputValue };
+                                                                        setMaterials(updated);
+                                                                    }}
+                                                                    onBlur={(e) => {
+                                                                        // Only validate and parse when the user finishes typing (onBlur)
+                                                                        const inputValue = e.target.value.trim();
+                                                                        let finalValue;
+
+                                                                        if (inputValue === '') {
+                                                                            finalValue = undefined;
+                                                                        } else {
+                                                                            const parsed = parseFloat(inputValue);
+                                                                            if (isNaN(parsed) || parsed <= 0) {
+                                                                                finalValue = undefined;
+                                                                                toast.error('Please enter a valid quantity greater than 0');
+                                                                            } else {
+                                                                                // Validate against available quantity
+                                                                                const maxQuantity = material.available_quantity || material.quantity;
+                                                                                if (parsed > maxQuantity) {
+                                                                                    finalValue = undefined;
+                                                                                    toast.error(`Cannot return more than ${maxQuantity} ${material.unit}`);
+                                                                                    // Reset to empty to let user try again
+                                                                                    const updated = [...materials];
+                                                                                    updated[index] = { ...updated[index], return_quantity: '' };
+                                                                                    setMaterials(updated);
+                                                                                    return;
+                                                                                } else {
+                                                                                    finalValue = parsed;
+                                                                                }
+                                                                            }
+                                                                        }
+
+                                                                        // Update with final validated value
+                                                                        const updated = [...materials];
+                                                                        updated[index] = { ...updated[index], return_quantity: finalValue };
+                                                                        setMaterials(updated);
+                                                                    }}
+                                                                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/20"
+                                                                    min="0.01"
+                                                                    step="0.01"
+                                                                />
+                                                                <span className="text-sm text-slate-500 whitespace-nowrap">{material.unit}</span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500">
+                                                                Enter the quantity you want to return (can be partial)
+                                                            </p>
+                                                        </div>
                                                     )}
                                                 </div>
                                             ))}

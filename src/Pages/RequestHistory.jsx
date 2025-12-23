@@ -81,9 +81,13 @@ export default function RequestHistory() {
             if (materialReturnFilter === 'returned') {
                 // Show only take transactions where ALL materials are returned
                 matchesMaterialReturn = t.materials.every(m => m.returned === true);
+            } else if (materialReturnFilter === 'partially_returned') {
+                // Show only take transactions where some materials are returned but not all
+                matchesMaterialReturn = t.materials.some(m => (m.returned_quantity || 0) > 0) &&
+                                       t.materials.some(m => (m.returned_quantity || 0) < m.quantity);
             } else if (materialReturnFilter === 'not_returned') {
-                // Show only take transactions where at least one material is not returned
-                matchesMaterialReturn = t.materials.some(m => m.returned !== true);
+                // Show only take transactions where no materials are returned
+                matchesMaterialReturn = t.materials.every(m => (m.returned_quantity || 0) === 0);
             }
         } else if (materialReturnFilter !== 'all') {
             // For non-take transactions (like return requests), don't show them in material return filters
@@ -169,10 +173,11 @@ export default function RequestHistory() {
                                     </TabsList>
                                 </Tabs>
                                 <Tabs value={materialReturnFilter} onValueChange={setMaterialReturnFilter}>
-                                    <TabsList className="bg-slate-100">
-                                        <TabsTrigger value="all">All Materials</TabsTrigger>
-                                        <TabsTrigger value="returned" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
-                                        <TabsTrigger value="not_returned" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
+                                    <TabsList className="bg-slate-100 grid w-full grid-cols-2 sm:flex">
+                                        <TabsTrigger value="all" className="text-xs sm:text-sm">All Materials</TabsTrigger>
+                                        <TabsTrigger value="returned" className="text-xs sm:text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
+                                        <TabsTrigger value="partially_returned" className="text-xs sm:text-sm data-[state=active]:bg-orange-600 data-[state=active]:text-white">Partially Returned</TabsTrigger>
+                                        <TabsTrigger value="not_returned" className="text-xs sm:text-sm data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
                                     </TabsList>
                                 </Tabs>
                             </div>
@@ -284,7 +289,10 @@ export default function RequestHistory() {
                                                                 >
                                                                     {material.name}
                                                                     <span className="ml-1 text-slate-500">
-                                                                        ({material.quantity} {material.unit})
+                                                                        {transaction.transaction_type === 'return' && material.return_quantity
+                                                                            ? `(${material.return_quantity}/${material.quantity} ${material.unit})`
+                                                                            : `(${material.quantity} ${material.unit})`
+                                                                        }
                                                                     </span>
                                                                     {material.reference_number && (
                                                                         <span className="ml-2 font-mono text-xs">
@@ -297,6 +305,14 @@ export default function RequestHistory() {
                                                                         {material.returned ? (
                                                                             <span className="text-green-600 font-medium">
                                                                                 ✅ Returned on {material.return_date}
+                                                                            </span>
+                                                                        ) : material.return_declined ? (
+                                                                            <span className="text-red-600 font-medium">
+                                                                                ❌ Return declined by {material.return_declined_by} on {material.return_declined_date}
+                                                                            </span>
+                                                                        ) : (material.returned_quantity || 0) > 0 ? (
+                                                                            <span className="text-orange-600 font-medium">
+                                                                                🔄 Partially returned ({material.returned_quantity}/{material.quantity} {material.unit})
                                                                             </span>
                                                                         ) : (
                                                                             <span className="text-yellow-600">

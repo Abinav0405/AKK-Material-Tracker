@@ -75,9 +75,18 @@ export default function MaterialInput({ materials, setMaterials, showReferenceNu
                             <Input
                                 type="number"
                                 min="1"
-                                placeholder="Qty"
-                                value={material.quantity}
-                                onChange={(e) => updateMaterial(index, 'quantity', parseInt(e.target.value) || 1)}
+                                placeholder="QTY"
+                                value={material.quantity || ''}
+                                onChange={(e) => {
+                                    const inputValue = e.target.value;
+                                    // Allow completely empty values - no forced defaults
+                                    if (inputValue === '') {
+                                        updateMaterial(index, 'quantity', ''); // Store as empty string
+                                    } else {
+                                        const parsed = parseInt(inputValue);
+                                        updateMaterial(index, 'quantity', isNaN(parsed) ? '' : parsed);
+                                    }
+                                }}
                                 className="border-slate-200 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]/20"
                             />
                         </div>

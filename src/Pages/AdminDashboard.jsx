@@ -17,7 +17,7 @@ import {
 import {
     ArrowLeft, Download, Search, Package, RotateCcw,
     Calendar, Clock, User, FileSpreadsheet, Loader2, Trash2, Printer,
-    CheckCircle, XCircle, AlertCircle, LogOut, Edit2
+    CheckCircle, XCircle, AlertCircle, LogOut, Edit2, ChevronDown, ChevronUp
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
@@ -45,6 +45,7 @@ export default function AdminDashboard() {
     const [materialReturnFilter, setMaterialReturnFilter] = useState('all');
     const [adminStatusId, setAdminStatusId] = useState(null);
     const [editingTransaction, setEditingTransaction] = useState(null);
+    const [expandedCards, setExpandedCards] = useState(new Set());
     
     const queryClient = useQueryClient();
     const adminEmail = sessionStorage.getItem('adminEmail');
@@ -212,6 +213,154 @@ export default function AdminDashboard() {
     const approveRequestMutation = useMutation({
         mutationFn: async ({ id, status }) => {
             const adminName = sessionStorage.getItem('adminName') || 'Admin';
+
+            // First, get the transaction to check if it's a return request
+            const { data: transaction, error: fetchError } = await supabase
+                .from('transactions')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            // Update the request transaction status first
+            const { error: statusError } = await supabase
+                .from('transactions')
+                .update({
+                    approval_status: status,
+                    approved_by: adminName,
+                    approval_date: format(new Date(), 'yyyy-MM-dd HH:mm')
+                })
+                .eq('id', id);
+            if (statusError) throw statusError;
+
+            // If this is a return request, update the original take transaction
+            if (transaction.transaction_type === 'return') {
+                // Find the original take transaction(s) that this return references
+                const returnMaterials = transaction.materials || [];
+                const referenceNumbers = returnMaterials.map(m => m.reference_number).filter(Boolean);
+
+                if (referenceNumbers.length > 0) {
+                    // Find all take transactions with these reference numbers
+                    const { data: takeTransactions, error: takeError } = await supabase
+                        .from('transactions')
+                        .select('*')
+                        .eq('transaction_type', 'take')
+                        .eq('approval_status', 'approved');
+
+                    if (takeError) throw takeError;
+
+                    const transactionUpdates = new Map();
+
+                    for (const refNum of referenceNumbers) {
+                        const takeTransaction = takeTransactions?.find(t =>
+                            t.materials?.some(m => m.reference_number === refNum)
+                        );
+
+                        if (takeTransaction) {
+                            if (!transactionUpdates.has(takeTransaction.id)) {
+                                transactionUpdates.set(takeTransaction.id, takeTransaction.materials);
+                            }
+
+                            const currentMaterials = transactionUpdates.get(takeTransaction.id);
+
+                            if (status === 'approved') {
+                                // Calculate total returned from ALL approved returns for this reference number
+                                // (including the one we just approved)
+                                const { data: allApprovedReturns, error: returnsError } = await supabase
+                                    .from('transactions')
+                                    .select('*')
+                                    .eq('transaction_type', 'return')
+                                    .eq('approval_status', 'approved');
+
+                                if (returnsError) throw returnsError;
+
+                                let totalReturnedForRef = 0;
+                                for (const approvedReturn of allApprovedReturns || []) {
+                                    const approvedMaterial = approvedReturn.materials?.find(m =>
+                                        m.reference_number === refNum
+                                    );
+                                    if (approvedMaterial && approvedMaterial.return_quantity) {
+                                        totalReturnedForRef += approvedMaterial.return_quantity;
+                                    }
+                                }
+
+                                const originalQuantity = takeTransaction.materials.find(m => m.reference_number === refNum).quantity;
+                                const isFullyReturned = totalReturnedForRef >= originalQuantity;
+
+                                const updatedMaterials = currentMaterials.map(material =>
+                                    material.reference_number === refNum
+                                        ? {
+                                            // Preserve all original material properties
+                                            ...material,
+                                            // Only update return-related fields
+                                            returned: isFullyReturned,
+                                            returned_quantity: totalReturnedForRef,
+                                            return_date: isFullyReturned ? format(new Date(), 'yyyy-MM-dd HH:mm') : material.return_date,
+                                            // Clear any decline status since it's now approved
+                                            return_declined: false,
+                                            return_declined_by: null,
+                                            return_declined_date: null
+                                        }
+                                        : material
+                                );
+                                transactionUpdates.set(takeTransaction.id, updatedMaterials);
+                            } else if (status === 'declined') {
+                                // For declined returns, recalculate returned_quantity excluding this declined return
+                                const { data: allApprovedReturns, error: returnsError } = await supabase
+                                    .from('transactions')
+                                    .select('*')
+                                    .eq('transaction_type', 'return')
+                                    .eq('approval_status', 'approved');
+
+                                if (returnsError) throw returnsError;
+
+                                let totalReturnedForRef = 0;
+                                for (const approvedReturn of allApprovedReturns || []) {
+                                    const approvedMaterial = approvedReturn.materials?.find(m =>
+                                        m.reference_number === refNum
+                                    );
+                                    if (approvedMaterial && approvedMaterial.return_quantity) {
+                                        totalReturnedForRef += approvedMaterial.return_quantity;
+                                    }
+                                }
+
+                                const originalQuantity = takeTransaction.materials.find(m => m.reference_number === refNum).quantity;
+                                const isFullyReturned = totalReturnedForRef >= originalQuantity;
+
+                                const updatedMaterials = currentMaterials.map(material =>
+                                    material.reference_number === refNum
+                                        ? {
+                                            ...material,
+                                            returned: isFullyReturned,
+                                            returned_quantity: totalReturnedForRef,
+                                            return_date: isFullyReturned ? material.return_date : null,
+                                            return_declined: true,
+                                            return_declined_by: adminName,
+                                            return_declined_date: format(new Date(), 'yyyy-MM-dd HH:mm'),
+                                        }
+                                        : material
+                                );
+                                transactionUpdates.set(takeTransaction.id, updatedMaterials);
+                            }
+                        }
+                    }
+
+                    // Update all affected take transactions
+                    for (const [transactionId, updatedMaterials] of transactionUpdates) {
+                        const { error: updateError } = await supabase
+                            .from('transactions')
+                            .update({ materials: updatedMaterials })
+                            .eq('id', transactionId);
+
+                        if (updateError) throw updateError;
+                    }
+                }
+            }
+
+            return; // Early return since we already updated the status above
+
+            // Update the request transaction (return request) status
             const { error } = await supabase
                 .from('transactions')
                 .update({
@@ -305,9 +454,13 @@ export default function AdminDashboard() {
             if (materialReturnFilter === 'returned') {
                 // Show only take transactions where ALL materials are returned
                 matchesMaterialReturn = t.materials.every(m => m.returned === true);
+            } else if (materialReturnFilter === 'partially_returned') {
+                // Show only take transactions where some materials are returned but not all
+                matchesMaterialReturn = t.materials.some(m => (m.returned_quantity || 0) > 0) &&
+                                       t.materials.some(m => (m.returned_quantity || 0) < m.quantity);
             } else if (materialReturnFilter === 'not_returned') {
-                // Show only take transactions where at least one material is not returned
-                matchesMaterialReturn = t.materials.some(m => m.returned !== true);
+                // Show only take transactions where no materials are returned
+                matchesMaterialReturn = t.materials.every(m => (m.returned_quantity || 0) === 0);
             }
         } else if (materialReturnFilter !== 'all') {
             // For non-take transactions (like return requests), don't show them in material return filters
@@ -498,6 +651,16 @@ export default function AdminDashboard() {
         setShowPrintDialog(false);
     };
 
+    const toggleCardExpansion = (transactionId) => {
+        const newExpanded = new Set(expandedCards);
+        if (newExpanded.has(transactionId)) {
+            newExpanded.delete(transactionId);
+        } else {
+            newExpanded.add(transactionId);
+        }
+        setExpandedCards(newExpanded);
+    };
+
     const getStatusBadge = (status) => {
         switch(status) {
             case 'approved':
@@ -619,13 +782,14 @@ export default function AdminDashboard() {
                                         <TabsTrigger value="declined">Declined</TabsTrigger>
                                     </TabsList>
                                 </Tabs>
-                                <Tabs value={materialReturnFilter} onValueChange={setMaterialReturnFilter}>
-                                    <TabsList className="bg-slate-100">
-                                        <TabsTrigger value="all">All Materials</TabsTrigger>
-                                        <TabsTrigger value="returned" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
-                                        <TabsTrigger value="not_returned" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
-                                    </TabsList>
-                                </Tabs>
+                                    <Tabs value={materialReturnFilter} onValueChange={setMaterialReturnFilter}>
+                                        <TabsList className="bg-slate-100 grid w-full grid-cols-2 sm:flex">
+                                            <TabsTrigger value="all" className="text-xs sm:text-sm">All Materials</TabsTrigger>
+                                            <TabsTrigger value="returned" className="text-xs sm:text-sm data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
+                                            <TabsTrigger value="partially_returned" className="text-xs sm:text-sm data-[state=active]:bg-orange-600 data-[state=active]:text-white">Partially Returned</TabsTrigger>
+                                            <TabsTrigger value="not_returned" className="text-xs sm:text-sm data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
+                                        </TabsList>
+                                    </Tabs>
                                 <Tabs value={dateFilter} onValueChange={setDateFilter}>
                                     <TabsList className="bg-slate-100">
                                         <TabsTrigger value="all">All Time</TabsTrigger>
@@ -684,7 +848,18 @@ export default function AdminDashboard() {
                                             <div className={`h-1 ${transaction.transaction_type === 'return' ? 'bg-emerald-600' : 'bg-[#f97316]'}`} />
                                             <CardContent className="p-5">
                                                 <div className="flex items-start justify-between gap-4 mb-4">
-                                                    <div className="flex-1" />
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => toggleCardExpansion(transaction.id)}
+                                                        className="text-slate-500 hover:text-slate-700 p-1"
+                                                    >
+                                                        {expandedCards.has(transaction.id) ? (
+                                                            <ChevronUp className="w-4 h-4" />
+                                                        ) : (
+                                                            <ChevronDown className="w-4 h-4" />
+                                                        )}
+                                                    </Button>
                                                     <div className="flex gap-2">
                                                         {transaction.approval_status === 'pending' ? (
                                                             <>
@@ -792,10 +967,12 @@ export default function AdminDashboard() {
                                                     </div>
 
                                                 <div className="ml-16 md:ml-0">
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {transaction.materials?.map((material, idx) => (
-                                                            <div key={idx} className="flex flex-col gap-1">
+                                                    {/* Collapsed view - horizontal layout */}
+                                                    {!expandedCards.has(transaction.id) && (
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {transaction.materials?.map((material, idx) => (
                                                                 <Badge
+                                                                    key={idx}
                                                                     variant="outline"
                                                                     className={`${
                                                                         material.returned
@@ -807,7 +984,10 @@ export default function AdminDashboard() {
                                                                 >
                                                                     {material.name}
                                                                     <span className="ml-1 text-slate-500">
-                                                                        ({material.quantity} {material.unit})
+                                                                        {transaction.transaction_type === 'return' && material.return_quantity
+                                                                            ? `(${material.return_quantity}/${material.quantity} ${material.unit})`
+                                                                            : `(${material.quantity} ${material.unit})`
+                                                                        }
                                                                     </span>
                                                                     {material.reference_number && (
                                                                         <span className="ml-2 font-mono text-xs">
@@ -815,22 +995,101 @@ export default function AdminDashboard() {
                                                                         </span>
                                                                     )}
                                                                 </Badge>
-                                                                {transaction.transaction_type === 'take' && material.reference_number && (
-                                                                    <div className="text-xs text-slate-500 ml-2">
-                                                                        {material.returned ? (
-                                                                            <span className="text-green-600 font-medium">
-                                                                                ✅ Returned on {material.return_date}
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Expanded view - vertical layout with status history */}
+                                                    {expandedCards.has(transaction.id) && (
+                                                        <div className="space-y-3">
+                                                            {transaction.materials?.map((material, idx) => (
+                                                                <div key={idx} className="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <Badge
+                                                                            variant="outline"
+                                                                            className={`${
+                                                                                material.returned
+                                                                                    ? 'bg-green-50 border-green-200 text-green-800'
+                                                                                    : transaction.transaction_type === 'take'
+                                                                                    ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                                                                                    : 'bg-slate-50 border-slate-200'
+                                                                            }`}
+                                                                        >
+                                                                            {material.name}
+                                                                            <span className="ml-1 text-slate-500">
+                                                                                {transaction.transaction_type === 'return' && material.return_quantity
+                                                                                    ? `(${material.return_quantity}/${material.quantity} ${material.unit})`
+                                                                                    : `(${material.quantity} ${material.unit})`
+                                                                                }
                                                                             </span>
+                                                                            {material.reference_number && (
+                                                                                <span className="ml-2 font-mono text-xs">
+                                                                                    #{material.reference_number}
+                                                                                </span>
+                                                                            )}
+                                                                        </Badge>
+                                                                    </div>
+
+                                                                {transaction.transaction_type === 'take' && (
+                                                                    <div className="text-xs text-slate-500 ml-2 space-y-2">
+                                                                        {/* Return attempt history - chronological like GitHub commits */}
+                                                                        {/* Note: material.return_declined indicates there was at least one declined attempt */}
+                                                                        {/* We show this as a separate status entry, but don't show quantity since declined attempts don't count */}
+                                                                        {material.return_declined && material.reference_number && (
+                                                                            <div className="bg-red-50 border border-red-200 rounded px-2 py-1">
+                                                                                <div className="text-red-700 font-medium">
+                                                                                    Return request declined by {material.return_declined_by} on {material.return_declined_date}
+                                                                                </div>
+                                                                                <div className="text-red-600 text-xs mt-1">
+                                                                                    Remaining qty to return: {material.quantity - (material.returned_quantity || 0)}/{material.quantity}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Current/Accepted returns */}
+                                                                        {material.reference_number ? (
+                                                                            material.returned ? (
+                                                                                <div className="bg-green-50 border border-green-200 rounded px-2 py-1">
+                                                                                    <div className="text-green-700 font-medium">
+                                                                                        ✅ Returned {material.returned_quantity || material.quantity}/{material.quantity} {material.name} on {material.return_date}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (material.returned_quantity || 0) > 0 ? (
+                                                                                <div className="bg-orange-50 border border-orange-200 rounded px-2 py-1">
+                                                                                    <div className="text-orange-700 font-medium">
+                                                                                        🔄 Returned {material.returned_quantity}/{material.quantity} {material.name}
+                                                                                    </div>
+                                                                                    <div className="text-orange-600 text-xs mt-1">
+                                                                                        Remaining qty to return: {material.quantity - (material.returned_quantity || 0)}/{material.quantity}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+                                                                                    <div className="text-yellow-700 font-medium">
+                                                                                        ⏳ Not returned
+                                                                                    </div>
+                                                                                    <div className="text-yellow-600 text-xs mt-1">
+                                                                                        Remaining qty to return: {material.quantity}/{material.quantity}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )
                                                                         ) : (
-                                                                            <span className="text-yellow-600">
-                                                                                ⏳ Not returned
-                                                                            </span>
+                                                                            <div className="bg-gray-50 border border-gray-200 rounded px-2 py-1">
+                                                                                <div className="text-gray-700 font-medium">
+                                                                                    📦 {material.name} - No reference number
+                                                                                </div>
+                                                                                <div className="text-gray-600 text-xs mt-1">
+                                                                                    This material cannot be returned (missing reference number)
+                                                                                </div>
+                                                                            </div>
                                                                         )}
                                                                     </div>
                                                                 )}
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
                                                     {transaction.notes && (
                                                         <p className="text-sm text-slate-500 mt-2 italic">
                                                             "{transaction.notes}"
