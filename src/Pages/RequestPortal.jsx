@@ -13,6 +13,16 @@ import MaterialForm from "@/Components/MaterialForm";
 export default function RequestPortal() {
     const [activeForm, setActiveForm] = useState(null);
     const [notificationCount, setNotificationCount] = useState(0);
+    const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+
+    // Check authentication on component mount
+    useEffect(() => {
+        const workerLoggedIn = sessionStorage.getItem('workerLoggedIn');
+        if (!workerLoggedIn) {
+            // Redirect to worker login if not authenticated
+            window.location.href = createPageUrl('WorkerLogin');
+        }
+    }, []);
 
     const { data: transactions = [] } = useQuery({
         queryKey: ['transactions'],
@@ -28,8 +38,24 @@ export default function RequestPortal() {
         refetchInterval: 3000,
     });
 
-    // 🔔 Notification count logic (unchanged structure)
+    // Mark initial transactions as seen on first load
     useEffect(() => {
+        if (transactions.length > 0 && !initialLoadComplete) {
+            const seenIds = JSON.parse(localStorage.getItem('seenRequestIds') || '[]');
+            const currentApprovedDeclinedIds = transactions
+                .filter(t => t.approval_status === 'approved' || t.approval_status === 'declined')
+                .map(t => t.id);
+
+            const updatedSeenIds = [...new Set([...seenIds, ...currentApprovedDeclinedIds])];
+            localStorage.setItem('seenRequestIds', JSON.stringify(updatedSeenIds));
+            setInitialLoadComplete(true);
+        }
+    }, [transactions, initialLoadComplete]);
+
+    // 🔔 Notification count logic - only count newly approved/declined requests
+    useEffect(() => {
+        if (!initialLoadComplete) return;
+
         const seenIds = JSON.parse(localStorage.getItem('seenRequestIds') || '[]');
 
         const newApprovals = transactions.filter(t =>
@@ -38,7 +64,7 @@ export default function RequestPortal() {
         );
 
         setNotificationCount(newApprovals.length);
-    }, [transactions]);
+    }, [transactions, initialLoadComplete]);
 
     const handleSuccess = () => {
         setActiveForm(null);

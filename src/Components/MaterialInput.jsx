@@ -1,12 +1,31 @@
 import React from 'react';
 import { Input } from "@/Components/ui/input";
 import { Button } from "@/Components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Badge } from "@/Components/ui/badge";
+import { Plus, Trash2, Hash } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function MaterialInput({ materials, setMaterials }) {
+export default function MaterialInput({ materials, setMaterials, showReferenceNumbers = false, isReturn = false }) {
+    // Generate reference number for a single material
+    const generateReferenceNumber = () => {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    };
+
+    // Generate sequential reference numbers for multiple materials
+    const generateSequentialReferenceNumbers = (count, startNumber = null) => {
+        if (!startNumber) {
+            startNumber = Math.floor(100000 + Math.random() * 900000);
+        }
+        const numbers = [];
+        for (let i = 0; i < count; i++) {
+            numbers.push((startNumber + i).toString());
+        }
+        return numbers;
+    };
+
     const addMaterial = () => {
-        setMaterials([...materials, { name: '', quantity: 1, unit: 'pcs' }]);
+        const newMaterials = [...materials, { name: '', quantity: 1, unit: 'pcs' }];
+        setMaterials(newMaterials);
     };
 
     const removeMaterial = (index) => {
@@ -70,6 +89,13 @@ export default function MaterialInput({ materials, setMaterials }) {
                                 className="border-slate-200 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]/20"
                             />
                         </div>
+                        {showReferenceNumbers && material.reference_number && (
+                            <div className="w-24 flex items-center">
+                                <Badge variant="outline" className="font-mono text-xs">
+                                    #{material.reference_number}
+                                </Badge>
+                            </div>
+                        )}
                         <Button
                             type="button"
                             variant="ghost"

@@ -14,10 +14,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/Components/ui/dialog";
-import { 
-    ArrowLeft, Download, Search, Package, RotateCcw, 
+import {
+    ArrowLeft, Download, Search, Package, RotateCcw,
     Calendar, Clock, User, FileSpreadsheet, Loader2, Trash2, Printer,
-    CheckCircle, XCircle, AlertCircle, LogOut
+    CheckCircle, XCircle, AlertCircle, LogOut, Edit2
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/lib/utils";
@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from 'xlsx';
 import { toast } from "sonner";
 import { sendBrowserNotification } from "@/lib/emailNotification";
+import MaterialForm from "@/Components/MaterialForm";
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
@@ -41,7 +42,9 @@ export default function AdminDashboard() {
     const [printEndDate, setPrintEndDate] = useState('');
     const [printWorkerId, setPrintWorkerId] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [materialReturnFilter, setMaterialReturnFilter] = useState('all');
     const [adminStatusId, setAdminStatusId] = useState(null);
+    const [editingTransaction, setEditingTransaction] = useState(null);
     
     const queryClient = useQueryClient();
     const adminEmail = sessionStorage.getItem('adminEmail');
@@ -226,6 +229,20 @@ export default function AdminDashboard() {
         },
     });
 
+    const deleteMutation = useMutation({
+        mutationFn: async (id) => {
+            const { error } = await supabase
+                .from('transactions')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            setEditingTransaction(null);
+        },
+    });
+
     const handleDeleteHistory = () => {
         if (password === '1432') {
             setPasswordError('');
@@ -233,6 +250,10 @@ export default function AdminDashboard() {
         } else {
             setPasswordError('Incorrect password');
         }
+    };
+
+    const handleEditSuccess = () => {
+        setEditingTransaction(null);
     };
 
     const handleLogout = async () => {
@@ -254,31 +275,43 @@ export default function AdminDashboard() {
 
     const filteredTransactions = transactions.filter(t => {
         const matchesFilter = filter === 'all' || t.transaction_type === filter;
-        const matchesSearch = 
+        const matchesSearch =
             t.worker_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.worker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.materials?.some(m => m.name?.toLowerCase().includes(searchTerm.toLowerCase()));
-        
+            t.materials?.some(m => m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                   m.reference_number?.includes(searchTerm));
+
         const matchesWorkerId = !workerIdFilter || t.worker_id?.toLowerCase().includes(workerIdFilter.toLowerCase());
         const matchesStatus = statusFilter === 'all' || t.approval_status === statusFilter;
-        
+
         let matchesDate = true;
         if (dateFilter !== 'all' && t.transaction_date) {
             const transDate = new Date(t.transaction_date);
             const now = new Date();
-            
+
             if (dateFilter === 'week') {
                 const weekAgo = new Date(now.setDate(now.getDate() - 7));
                 matchesDate = transDate >= weekAgo;
             } else if (dateFilter === 'month') {
-                matchesDate = transDate.getMonth() === new Date().getMonth() && 
+                matchesDate = transDate.getMonth() === new Date().getMonth() &&
                              transDate.getFullYear() === new Date().getFullYear();
             } else if (dateFilter === 'year') {
                 matchesDate = transDate.getFullYear() === new Date().getFullYear();
             }
         }
-        
-        return matchesFilter && matchesSearch && matchesDate && matchesWorkerId && matchesStatus;
+
+        let matchesMaterialReturn = true;
+        if (materialReturnFilter !== 'all' && t.transaction_type === 'take' && t.materials) {
+            if (materialReturnFilter === 'returned') {
+                // Show only transactions where ALL materials are returned
+                matchesMaterialReturn = t.materials.every(m => m.returned === true);
+            } else if (materialReturnFilter === 'not_returned') {
+                // Show only transactions where at least one material is not returned
+                matchesMaterialReturn = t.materials.some(m => m.returned !== true);
+            }
+        }
+
+        return matchesFilter && matchesSearch && matchesDate && matchesWorkerId && matchesStatus && matchesMaterialReturn;
     });
 
     const pendingCount = transactions.filter(t => t.approval_status === 'pending').length;
@@ -552,7 +585,7 @@ export default function AdminDashboard() {
                                 <div className="relative flex-1 w-full">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <Input
-                                        placeholder="Search by name, ID, or material..."
+                                        placeholder="Search by name, ID, material, or reference #..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
                                         className="pl-10 border-slate-200"
@@ -573,6 +606,13 @@ export default function AdminDashboard() {
                                         <TabsTrigger value="pending">Pending</TabsTrigger>
                                         <TabsTrigger value="approved">Approved</TabsTrigger>
                                         <TabsTrigger value="declined">Declined</TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                                <Tabs value={materialReturnFilter} onValueChange={setMaterialReturnFilter}>
+                                    <TabsList className="bg-slate-100">
+                                        <TabsTrigger value="all">All Materials</TabsTrigger>
+                                        <TabsTrigger value="returned" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
+                                        <TabsTrigger value="not_returned" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
                                     </TabsList>
                                 </Tabs>
                                 <Tabs value={dateFilter} onValueChange={setDateFilter}>
@@ -597,130 +637,174 @@ export default function AdminDashboard() {
 
             {/* Transactions List */}
             <div className="max-w-6xl mx-auto px-4 pb-8">
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-8 h-8 animate-spin text-slate-700" />
-                    </div>
-                ) : filteredTransactions.length === 0 ? (
-                    <Card className="border-0 shadow-lg">
-                        <CardContent className="py-20 text-center">
-                            <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-                            <h3 className="text-xl font-semibold text-slate-700 mb-2">No Transactions Found</h3>
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <div className="space-y-4">
-                        <AnimatePresence>
-                            {filteredTransactions.map((transaction, index) => (
-                                <motion.div
-                                    key={transaction.id}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: index * 0.05 }}
-                                >
-                                    <Card className="border-0 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
-                                        <div className={`h-1 ${transaction.transaction_type === 'return' ? 'bg-emerald-600' : 'bg-[#f97316]'}`} />
-                                        <CardContent className="p-5">
-                                            <div className="flex items-start justify-between gap-4 mb-4">
-                                                <div className="flex-1" />
-                                                <div className="flex gap-2">
-                                                    {transaction.approval_status === 'pending' ? (
-                                                        <>
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => approveRequestMutation.mutate({ id: transaction.id, status: 'approved' })}
-                                                                className="bg-green-600 hover:bg-green-700"
-                                                                disabled={approveRequestMutation.isPending}
-                                                            >
-                                                                <CheckCircle className="w-4 h-4 mr-1" />
-                                                                Approve
-                                                            </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => approveRequestMutation.mutate({ id: transaction.id, status: 'declined' })}
-                                                                className="bg-red-600 hover:bg-red-700"
-                                                                disabled={approveRequestMutation.isPending}
-                                                            >
-                                                                <XCircle className="w-4 h-4 mr-1" />
-                                                                Decline
-                                                            </Button>
-                                                        </>
-                                                    ) : (
-                                                        <Badge className={transaction.approval_status === 'approved' ? 'bg-green-600' : 'bg-red-600'}>
-                                                            {transaction.approval_status === 'approved' ? 'Already Approved' : 'Already Declined'}
-                                                        </Badge>
-                                                    )}
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => printTransaction(transaction)}
-                                                    >
-                                                        <Printer className="w-4 h-4 mr-1" />
-                                                        Print
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                <div className="flex items-start gap-4">
-                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                                                        transaction.transaction_type === 'return' 
-                                                            ? 'bg-emerald-100' 
-                                                            : 'bg-[#f97316]/10'
-                                                    }`}>
-                                                        {transaction.transaction_type === 'return' ? (
-                                                            <RotateCcw className="w-6 h-6 text-emerald-600" />
+                <AnimatePresence mode="wait">
+                    {editingTransaction ? (
+                        <MaterialForm
+                            key={editingTransaction.id}
+                            type={editingTransaction.transaction_type}
+                            editMode={true}
+                            existingTransaction={editingTransaction}
+                            onBack={() => setEditingTransaction(null)}
+                            onSuccess={handleEditSuccess}
+                            onDelete={() => deleteMutation.mutate(editingTransaction.id)}
+                        />
+                    ) : isLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 className="w-8 h-8 animate-spin text-slate-700" />
+                        </div>
+                    ) : filteredTransactions.length === 0 ? (
+                        <Card className="border-0 shadow-lg">
+                            <CardContent className="py-20 text-center">
+                                <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+                                <h3 className="text-xl font-semibold text-slate-700 mb-2">No Transactions Found</h3>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
+                            <AnimatePresence>
+                                {filteredTransactions.map((transaction, index) => (
+                                    <motion.div
+                                        key={transaction.id}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: index * 0.05 }}
+                                    >
+                                        <Card className="border-0 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
+                                            <div className={`h-1 ${transaction.transaction_type === 'return' ? 'bg-emerald-600' : 'bg-[#f97316]'}`} />
+                                            <CardContent className="p-5">
+                                                <div className="flex items-start justify-between gap-4 mb-4">
+                                                    <div className="flex-1" />
+                                                    <div className="flex gap-2">
+                                                        {transaction.approval_status === 'pending' ? (
+                                                            <>
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => setEditingTransaction(transaction)}
+                                                                    className="bg-blue-600 hover:bg-blue-700"
+                                                                >
+                                                                    <Edit2 className="w-4 h-4 mr-1" />
+                                                                    Edit
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => approveRequestMutation.mutate({ id: transaction.id, status: 'approved' })}
+                                                                    className="bg-green-600 hover:bg-green-700"
+                                                                    disabled={approveRequestMutation.isPending}
+                                                                >
+                                                                    <CheckCircle className="w-4 h-4 mr-1" />
+                                                                    Approve
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={() => approveRequestMutation.mutate({ id: transaction.id, status: 'declined' })}
+                                                                    className="bg-red-600 hover:bg-red-700"
+                                                                    disabled={approveRequestMutation.isPending}
+                                                                >
+                                                                    <XCircle className="w-4 h-4 mr-1" />
+                                                                    Decline
+                                                                </Button>
+                                                            </>
                                                         ) : (
-                                                            <Package className="w-6 h-6 text-[#f97316]" />
-                                                        )}
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <Badge variant={transaction.transaction_type === 'return' ? 'default' : 'secondary'}
-                                                                className={transaction.transaction_type === 'return' 
-                                                                    ? 'bg-emerald-600' 
-                                                                    : 'bg-[#f97316] text-white'
-                                                                }
-                                                            >
-                                                                {transaction.transaction_type === 'return' ? 'Return' : 'Take'}
+                                                            <Badge className={transaction.approval_status === 'approved' ? 'bg-green-600' : 'bg-red-600'}>
+                                                                {transaction.approval_status === 'approved' ? 'Already Approved' : 'Already Declined'}
                                                             </Badge>
-                                                            {getStatusBadge(transaction.approval_status)}
-                                                            <span className="text-sm text-slate-500 flex items-center gap-1">
-                                                                <Calendar className="w-3 h-3" />
-                                                                {transaction.transaction_date}
-                                                            </span>
-                                                            <span className="text-sm text-slate-500 flex items-center gap-1">
-                                                                <Clock className="w-3 h-3" />
-                                                                {transaction.transaction_time}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-slate-700">
-                                                            <User className="w-4 h-4 text-slate-400" />
-                                                            <span className="font-medium">{transaction.worker_name}</span>
-                                                            <span className="text-slate-400">•</span>
-                                                            <span className="text-sm text-slate-500">ID: {transaction.worker_id}</span>
-                                                        </div>
-                                                        {transaction.approved_by && transaction.approval_status !== 'pending' && (
-                                                            <div className="text-sm text-slate-500 mt-1">
-                                                                {transaction.approval_status === 'approved' ? 'Approved' : 'Declined'} by {transaction.approved_by}
-                                                                {transaction.approval_date && ` on ${transaction.approval_date}`}
-                                                            </div>
                                                         )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => printTransaction(transaction)}
+                                                        >
+                                                            <Printer className="w-4 h-4 mr-1" />
+                                                            Print
+                                                        </Button>
                                                     </div>
                                                 </div>
+                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                                                            transaction.transaction_type === 'return'
+                                                                ? 'bg-emerald-100'
+                                                                : 'bg-[#f97316]/10'
+                                                        }`}>
+                                                            {transaction.transaction_type === 'return' ? (
+                                                                <RotateCcw className="w-6 h-6 text-emerald-600" />
+                                                            ) : (
+                                                                <Package className="w-6 h-6 text-[#f97316]" />
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <Badge variant={transaction.transaction_type === 'return' ? 'default' : 'secondary'}
+                                                                    className={transaction.transaction_type === 'return'
+                                                                        ? 'bg-emerald-600'
+                                                                        : 'bg-[#f97316] text-white'
+                                                                    }
+                                                                >
+                                                                    {transaction.transaction_type === 'return' ? 'Return' : 'Take'}
+                                                                </Badge>
+                                                                {getStatusBadge(transaction.approval_status)}
+                                                                <span className="text-sm text-slate-500 flex items-center gap-1">
+                                                                    <Calendar className="w-3 h-3" />
+                                                                    {transaction.transaction_date}
+                                                                </span>
+                                                                <span className="text-sm text-slate-500 flex items-center gap-1">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    {transaction.transaction_time}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-slate-700">
+                                                                <User className="w-4 h-4 text-slate-400" />
+                                                                <span className="font-medium">{transaction.worker_name}</span>
+                                                                <span className="text-slate-400">•</span>
+                                                                <span className="text-sm text-slate-500">ID: {transaction.worker_id}</span>
+                                                            </div>
+                                                            {transaction.approved_by && transaction.approval_status !== 'pending' && (
+                                                                <div className="text-sm text-slate-500 mt-1">
+                                                                    {transaction.approval_status === 'approved' ? 'Approved' : 'Declined'} by {transaction.approved_by}
+                                                                    {transaction.approval_date && ` on ${transaction.approval_date}`}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
 
                                                 <div className="ml-16 md:ml-0">
                                                     <div className="flex flex-wrap gap-2">
                                                         {transaction.materials?.map((material, idx) => (
-                                                            <Badge 
-                                                                key={idx} 
-                                                                variant="outline"
-                                                                className="bg-slate-50 border-slate-200"
-                                                            >
-                                                                {material.name} 
-                                                                <span className="ml-1 text-slate-500">
-                                                                    ({material.quantity} {material.unit})
-                                                                </span>
-                                                            </Badge>
+                                                            <div key={idx} className="flex flex-col gap-1">
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className={`${
+                                                                        material.returned
+                                                                            ? 'bg-green-50 border-green-200 text-green-800'
+                                                                            : transaction.transaction_type === 'take'
+                                                                            ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                                                                            : 'bg-slate-50 border-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    {material.name}
+                                                                    <span className="ml-1 text-slate-500">
+                                                                        ({material.quantity} {material.unit})
+                                                                    </span>
+                                                                    {material.reference_number && (
+                                                                        <span className="ml-2 font-mono text-xs">
+                                                                            #{material.reference_number}
+                                                                        </span>
+                                                                    )}
+                                                                </Badge>
+                                                                {transaction.transaction_type === 'take' && material.reference_number && (
+                                                                    <div className="text-xs text-slate-500 ml-2">
+                                                                        {material.returned ? (
+                                                                            <span className="text-green-600 font-medium">
+                                                                                ✅ Returned on {material.return_date}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-yellow-600">
+                                                                                ⏳ Not returned
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         ))}
                                                     </div>
                                                     {transaction.notes && (
@@ -729,14 +813,15 @@ export default function AdminDashboard() {
                                                         </p>
                                                     )}
                                                 </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
-                    </div>
-                )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Bulk Print Dialog */}

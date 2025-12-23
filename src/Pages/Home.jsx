@@ -42,7 +42,7 @@ export default function Home() {
                 {/* Portal Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
                     {/* Worker Portal */}
-                    <Link to={createPageUrl('RequestPortal')}>
+                    <Link to={createPageUrl('WorkerLogin')}>
                         <motion.div
                             whileHover={{ scale: 1.03, y: -8 }}
                             whileTap={{ scale: 0.98 }}

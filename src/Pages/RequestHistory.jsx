@@ -18,6 +18,7 @@ import MaterialForm from "@/Components/MaterialForm";
 export default function RequestHistory() {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [materialReturnFilter, setMaterialReturnFilter] = useState('all');
     const [editingTransaction, setEditingTransaction] = useState(null);
     const queryClient = useQueryClient();
 
@@ -61,12 +62,32 @@ export default function RequestHistory() {
     };
 
     const filteredTransactions = transactions.filter(t => {
-        const matchesSearch = 
+        // Filter by logged-in worker if accessing from worker portal
+        const workerLoggedIn = sessionStorage.getItem('workerLoggedIn');
+        const workerName = sessionStorage.getItem('workerName');
+        const workerId = sessionStorage.getItem('workerId');
+
+        const matchesWorker = !workerLoggedIn ||
+            (t.worker_name === workerName && t.worker_id === workerId);
+
+        const matchesSearch =
             t.worker_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.worker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.materials?.some(m => m.name?.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesStatus = statusFilter === 'all' || t.approval_status === statusFilter;
-        return matchesSearch && matchesStatus;
+
+        let matchesMaterialReturn = true;
+        if (materialReturnFilter !== 'all' && t.transaction_type === 'take' && t.materials) {
+            if (materialReturnFilter === 'returned') {
+                // Show only transactions where ALL materials are returned
+                matchesMaterialReturn = t.materials.every(m => m.returned === true);
+            } else if (materialReturnFilter === 'not_returned') {
+                // Show only transactions where at least one material is not returned
+                matchesMaterialReturn = t.materials.some(m => m.returned !== true);
+            }
+        }
+
+        return matchesWorker && matchesSearch && matchesStatus && matchesMaterialReturn;
     });
 
     const getStatusBadge = (status) => {
@@ -129,20 +150,29 @@ export default function RequestHistory() {
                                     className="pl-10 border-slate-200"
                                 />
                             </div>
-                            <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                                <TabsList className="bg-slate-100">
-                                    <TabsTrigger value="all">All Status</TabsTrigger>
-                                    <TabsTrigger value="pending" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">
-                                        Pending
-                                    </TabsTrigger>
-                                    <TabsTrigger value="approved" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
-                                        Approved
-                                    </TabsTrigger>
-                                    <TabsTrigger value="declined" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
-                                        Declined
-                                    </TabsTrigger>
-                                </TabsList>
-                            </Tabs>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+                                    <TabsList className="bg-slate-100">
+                                        <TabsTrigger value="all">All Status</TabsTrigger>
+                                        <TabsTrigger value="pending" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">
+                                            Pending
+                                        </TabsTrigger>
+                                        <TabsTrigger value="approved" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
+                                            Approved
+                                        </TabsTrigger>
+                                        <TabsTrigger value="declined" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
+                                            Declined
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                                <Tabs value={materialReturnFilter} onValueChange={setMaterialReturnFilter}>
+                                    <TabsList className="bg-slate-100">
+                                        <TabsTrigger value="all">All Materials</TabsTrigger>
+                                        <TabsTrigger value="returned" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">Returned</TabsTrigger>
+                                        <TabsTrigger value="not_returned" className="data-[state=active]:bg-yellow-600 data-[state=active]:text-white">Not Returned</TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
@@ -238,16 +268,41 @@ export default function RequestHistory() {
                                                 <div className="ml-16 md:ml-0 flex-1">
                                                     <div className="flex flex-wrap gap-2">
                                                         {transaction.materials?.map((material, idx) => (
-                                                            <Badge 
-                                                                key={idx} 
-                                                                variant="outline"
-                                                                className="bg-slate-50 border-slate-200"
-                                                            >
-                                                                {material.name} 
-                                                                <span className="ml-1 text-slate-500">
-                                                                    ({material.quantity} {material.unit})
-                                                                </span>
-                                                            </Badge>
+                                                            <div key={idx} className="flex flex-col gap-1">
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className={`${
+                                                                        material.returned
+                                                                            ? 'bg-green-50 border-green-200 text-green-800'
+                                                                            : transaction.transaction_type === 'take'
+                                                                            ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+                                                                            : 'bg-slate-50 border-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    {material.name}
+                                                                    <span className="ml-1 text-slate-500">
+                                                                        ({material.quantity} {material.unit})
+                                                                    </span>
+                                                                    {material.reference_number && (
+                                                                        <span className="ml-2 font-mono text-xs">
+                                                                            #{material.reference_number}
+                                                                        </span>
+                                                                    )}
+                                                                </Badge>
+                                                                {transaction.transaction_type === 'take' && material.reference_number && (
+                                                                    <div className="text-xs text-slate-500 ml-2">
+                                                                        {material.returned ? (
+                                                                            <span className="text-green-600 font-medium">
+                                                                                ✅ Returned on {material.return_date}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-yellow-600">
+                                                                                ⏳ Not returned
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         ))}
                                                     </div>
                                                     {transaction.notes && (
