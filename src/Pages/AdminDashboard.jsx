@@ -703,6 +703,7 @@ export default function AdminDashboard() {
                             overflow: hidden;
                             max-width: 800px;
                             margin: 0 auto;
+                            page-break-inside: avoid;
                         }
                         .header {
                             background: #dc6b2f;
@@ -864,6 +865,12 @@ export default function AdminDashboard() {
                             border-radius: 4px;
                             font-weight: 600;
                             font-size: 12px;
+                        }
+                        @media print {
+                            body { background: white !important; padding: 10px !important; }
+                            .receipt-container { box-shadow: none !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+                            .approval-info { page-break-before: avoid !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+                            .content-section { page-break-inside: avoid !important; break-inside: avoid !important; }
                         }
                     </style>
                 </head>
