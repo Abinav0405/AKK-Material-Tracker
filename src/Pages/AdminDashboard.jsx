@@ -676,11 +676,14 @@ export default function AdminDashboard() {
             }
         }
 
+        // Set filename for PDF save
+        const fileName = `${transaction.worker_id}_${transaction.transaction_date}_${transaction.transaction_time.replace(/:/g, '-')}`;
+
         const printWindow = window.open('', '', 'height=600,width=800');
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Transaction Receipt</title>
+                    <title>${fileName}</title>
                     <style>
                         body {
                             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -732,13 +735,14 @@ export default function AdminDashboard() {
                             z-index: 1;
                             color: #b22222;
                         }
-                        .receipt-title {
-                            font-size: 18px;
-                            font-weight: 600;
-                            margin-top: 15px;
-                            position: relative;
-                            z-index: 1;
+                        .date-header {
+                            position: absolute;
+                            top: 20px;
+                            right: 25px;
+                            font-size: 12px;
                             color: #b22222;
+                            font-weight: 600;
+                            z-index: 2;
                         }
                         .content-section {
                             padding: 30px;
@@ -836,8 +840,10 @@ export default function AdminDashboard() {
                             border: 1px solid #dee2e6;
                             border-radius: 8px;
                             padding: 15px;
+                            width: 100%;
                             max-width: 300px;
                             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                            page-break-inside: avoid;
                         }
                         .approval-info strong {
                             color: #28a745;
@@ -865,7 +871,7 @@ export default function AdminDashboard() {
                                 <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
                                 <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
                             </div>
-                            <h2 class="receipt-title">Material Transaction Receipt</h2>
+                            <div class="date-header">${transaction.transaction_date}</div>
                         </div>
                         <div class="content-section">
                             <div class="info">
