@@ -547,11 +547,20 @@ export default function AdminDashboard() {
 
     const filteredTransactions = transactions.filter(t => {
         const matchesFilter = filter === 'all' || t.transaction_type === filter;
-        const matchesSearch =
-            t.worker_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.worker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.materials?.some(m => m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                   m.reference_number?.includes(searchTerm));
+        let matchesSearch = false;
+
+        if (searchTerm.startsWith('/')) {
+            // Special search syntax: /approver_name to search by who approved the transaction
+            const approverName = searchTerm.slice(1).toLowerCase().trim();
+            matchesSearch = t.approved_by?.toLowerCase().includes(approverName);
+        } else {
+            // Regular search: worker name, worker ID, material name, or reference number
+            matchesSearch =
+                t.worker_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.worker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.materials?.some(m => m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                       m.reference_number?.includes(searchTerm));
+        }
 
         const matchesWorkerId = !workerIdFilter || t.worker_id?.toLowerCase().includes(workerIdFilter.toLowerCase());
         const matchesStatus = statusFilter === 'all' || t.approval_status === statusFilter;

@@ -398,7 +398,48 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
             }
 
             if (editMode && existingTransaction) {
-                const updatedTransaction = { ...formData, materials: processedMaterials };
+                let finalMaterials = processedMaterials;
+
+                // For take requests being edited, ensure all materials have reference numbers
+                if (type === 'take') {
+                    // Find materials that don't have reference numbers and generate them
+                    const materialsWithoutRefs = finalMaterials.filter(m => !m.reference_number);
+                    if (materialsWithoutRefs.length > 0) {
+                        // Generate sequential reference numbers for new materials
+                        const existingRefs = finalMaterials
+                            .map(m => m.reference_number)
+                            .filter(ref => ref);
+                        const maxExistingRef = existingRefs.length > 0
+                            ? Math.max(...existingRefs.map(ref => parseInt(ref)))
+                            : Math.floor(100000 + Math.random() * 900000);
+
+                        const newRefs = [];
+                        for (let i = 0; i < materialsWithoutRefs.length; i++) {
+                            newRefs.push((maxExistingRef + i + 1).toString());
+                        }
+
+                        // Update materials with new reference numbers
+                        finalMaterials = finalMaterials.map(material => {
+                            if (!material.reference_number) {
+                                const newRef = newRefs.shift();
+                                return {
+                                    ...material,
+                                    reference_number: newRef,
+                                    returned: false,
+                                    returned_quantity: 0,
+                                    return_date: null,
+                                    return_declined: false,
+                                    return_declined_by: null,
+                                    return_declined_date: null,
+                                    taken_date: format(new Date(), 'yyyy-MM-dd HH:mm')
+                                };
+                            }
+                            return material;
+                        });
+                    }
+                }
+
+                const updatedTransaction = { ...formData, materials: finalMaterials };
 
                 const { error } = await supabase
                     .from('transactions')
