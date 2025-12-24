@@ -403,12 +403,12 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                 // For take requests being edited, ensure all materials have reference numbers
                 if (type === 'take') {
                     // Find materials that don't have reference numbers and generate them
-                    const materialsWithoutRefs = finalMaterials.filter(m => !m.reference_number);
+                    const materialsWithoutRefs = finalMaterials.filter(m => m.reference_number == null || m.reference_number === '');
                     if (materialsWithoutRefs.length > 0) {
                         // Generate sequential reference numbers for new materials
                         const existingRefs = finalMaterials
                             .map(m => m.reference_number)
-                            .filter(ref => ref);
+                            .filter(ref => ref && ref !== '');
                         const maxExistingRef = existingRefs.length > 0
                             ? Math.max(...existingRefs.map(ref => parseInt(ref)))
                             : Math.floor(100000 + Math.random() * 900000);
@@ -419,9 +419,10 @@ export default function MaterialForm({ type, onBack, onSuccess, editMode = false
                         }
 
                         // Update materials with new reference numbers
+                        let refIndex = 0;
                         finalMaterials = finalMaterials.map(material => {
-                            if (!material.reference_number) {
-                                const newRef = newRefs.shift();
+                            if (material.reference_number == null || material.reference_number === '') {
+                                const newRef = newRefs[refIndex++];
                                 return {
                                     ...material,
                                     reference_number: newRef,
