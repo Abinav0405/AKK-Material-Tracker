@@ -92,10 +92,10 @@ const ReturnHistoryDisplay = ({ referenceNumber, totalQuantity, materialName, ma
         return (
             <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
                 <div className="text-yellow-700 font-medium">
-                    ⏳ Not returned
+                    Taken to Site
                 </div>
                 <div className="text-yellow-600 text-xs mt-1">
-                    Remaining qty to return: {totalQuantity}/{totalQuantity}
+                    Not Returned
                 </div>
             </div>
         );
@@ -164,6 +164,7 @@ export default function AdminDashboard() {
     const [adminStatusId, setAdminStatusId] = useState(null);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [expandedCards, setExpandedCards] = useState(new Set());
+    const [isBulkPrinting, setIsBulkPrinting] = useState(false);
     
     const queryClient = useQueryClient();
     const adminEmail = sessionStorage.getItem('adminEmail');
@@ -672,103 +673,264 @@ export default function AdminDashboard() {
                 <head>
                     <title>Transaction Receipt</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; position: relative; min-height: 100vh; }
-                        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-                        .header-content { display: flex; align-items: center; justify-content: center; gap: 20px; }
-                        .logo { width: 60px; height: 60px; flex-shrink: 0; }
-                        .company-info { text-align: left; }
-                        .info { margin-bottom: 20px; }
-                        .info-row { display: flex; margin-bottom: 8px; }
-                        .label { font-weight: bold; width: 150px; }
-                        .materials { margin-top: 20px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-                        th { background-color: #f2f2f2; }
-                        .return-history { background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 4px; padding: 4px; margin: 2px 0; font-size: 10px; }
-                        .approval-info { position: absolute; bottom: 40px; left: 40px; text-align: left; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 10px; max-width: 300px; }
-                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; margin: 0; }
-                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin: 5px 0 0 0; }
-                        .signature-line { margin-top: 20px; border-bottom: 1px solid #000; width: 200px; }
+                        body {
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            padding: 30px;
+                            position: relative;
+                            min-height: 100vh;
+                            background: #ffffff;
+                            color: #333;
+                        }
+                        .receipt-container {
+                            background: white;
+                            border-radius: 15px;
+                            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                            overflow: hidden;
+                            max-width: 800px;
+                            margin: 0 auto;
+                        }
+                        .header {
+                            background: #dc6b2f;
+                            color: white;
+                            text-align: center;
+                            padding: 25px;
+                            position: relative;
+                        }
+                        .header::before {
+                            content: '';
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+                        }
+                        .company-name {
+                            font-family: 'Calibri', 'Segoe UI', sans-serif;
+                            font-weight: 700;
+                            font-size: 24px;
+                            margin: 0;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                        }
+                        .company-address {
+                            font-family: 'Aptos Narrow', 'Segoe UI', sans-serif;
+                            font-size: 14px;
+                            margin: 8px 0 0 0;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                        }
+                        .receipt-title {
+                            font-size: 18px;
+                            font-weight: 600;
+                            margin-top: 15px;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                        }
+                        .content-section {
+                            padding: 30px;
+                            background: #f8f9fa;
+                        }
+                        .info {
+                            background: white;
+                            border-radius: 10px;
+                            padding: 20px;
+                            margin-bottom: 25px;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                            border-left: 4px solid #667eea;
+                        }
+                        .info-row {
+                            display: flex;
+                            margin-bottom: 12px;
+                            align-items: center;
+                        }
+                        .label {
+                            font-weight: 600;
+                            width: 160px;
+                            color: #495057;
+                            font-size: 14px;
+                        }
+                        .value {
+                            color: #212529;
+                            font-weight: 500;
+                        }
+                        .materials {
+                            margin-top: 25px;
+                        }
+                        .materials h3 {
+                            color: #495057;
+                            font-size: 16px;
+                            margin-bottom: 15px;
+                            font-weight: 600;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 15px;
+                            background: white;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                        }
+                        th {
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 12px 15px;
+                            text-align: left;
+                            font-weight: 600;
+                            font-size: 14px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                        }
+                        td {
+                            border-bottom: 1px solid #e9ecef;
+                            padding: 12px 15px;
+                            vertical-align: top;
+                        }
+                        tr:nth-child(even) {
+                            background-color: #f8f9fa;
+                        }
+                        tr:hover {
+                            background-color: #e3f2fd;
+                            transition: background-color 0.2s ease;
+                        }
+                        .return-history {
+                            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                            border: 1px solid #90caf9;
+                            border-radius: 6px;
+                            padding: 6px 8px;
+                            margin: 3px 0;
+                            font-size: 11px;
+                            color: #1565c0;
+                        }
+                        .notes-section {
+                            background: #fff3cd;
+                            border: 1px solid #ffeaa7;
+                            border-radius: 8px;
+                            padding: 15px;
+                            margin-top: 20px;
+                            color: #856404;
+                        }
+                        .notes-section strong {
+                            color: #533f00;
+                        }
+                        .approval-info {
+                            margin-top: 20px;
+                            text-align: left;
+                            font-size: 12px;
+                            color: #495057;
+                            background: white;
+                            border: 1px solid #dee2e6;
+                            border-radius: 8px;
+                            padding: 15px;
+                            max-width: 300px;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                        }
+                        .approval-info strong {
+                            color: #28a745;
+                        }
+                        .signature-line {
+                            margin-top: 20px;
+                            border-bottom: 2px solid #6c757d;
+                            width: 200px;
+                            height: 1px;
+                        }
+                        .status-returned {
+                            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+                            color: #155724;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-weight: 600;
+                            font-size: 12px;
+                        }
                     </style>
                 </head>
                 <body>
-                    <div class="header">
-                        <div class="company-info" style="text-align: center;">
-                            <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
-                            <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
+                    <div class="receipt-container">
+                        <div class="header">
+                            <div class="company-info">
+                                <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
+                                <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
+                            </div>
+                            <h2 class="receipt-title">Material Transaction Receipt</h2>
                         </div>
-                        <h2>Material Transaction Receipt</h2>
+                        <div class="content-section">
+                            <div class="info">
+                                <div class="info-row"><span class="label">Transaction Type:</span> <span class="value">${transaction.transaction_type === 'take' ? 'TAKE' : 'RETURN'}</span></div>
+                                <div class="info-row"><span class="label">Status:</span> <span class="value">${transaction.approval_status.toUpperCase()}</span></div>
+                                <div class="info-row"><span class="label">Date:</span> <span class="value">${transaction.transaction_date}</span></div>
+                                <div class="info-row"><span class="label">Time:</span> <span class="value">${transaction.transaction_time}</span></div>
+                                <div class="info-row"><span class="label">Requestor Name:</span> <span class="value">${transaction.worker_name}</span></div>
+                                <div class="info-row"><span class="label">Requestor ID:</span> <span class="value">${transaction.worker_id}</span></div>
+                            </div>
+                            <div class="materials">
+                                <h3>Materials</h3>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Material Name</th>
+                                            <th>Quantity</th>
+                                            <th>Unit</th>
+                                            <th>Reference #</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${transaction.materials?.map(m => `
+                                            <tr>
+                                                <td>${m.name}</td>
+                                                <td>${m.quantity}</td>
+                                                <td>${m.unit}</td>
+                                                <td>${m.reference_number || 'N/A'}</td>
+                                                <td>
+                                                    ${(() => {
+                                                        // For return transactions, show simple "Returned X/Y" format
+                                                        if (transaction.transaction_type === 'return') {
+                                                            return `<span class="status-returned">Returned ${m.return_quantity || m.quantity}/${m.quantity}</span>`;
+                                                        }
+
+                                                        // For take transactions, show return history
+                                                        if (!m.reference_number) {
+                                                            return 'Not Returned';
+                                                        }
+
+                                                            const history = returnHistoryMap.get(m.reference_number);
+                                                            if (!history || history.length === 0) {
+                                                                return m.returned ? `Returned (${m.return_date})` : 'Taken to Site<br>Not Returned';
+                                                            }
+
+                                                        const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
+                                                        const remaining = m.quantity - totalReturned;
+                                                        const isFullyReturned = remaining <= 0;
+
+                                                        let html = '';
+                                                        // Individual return entries
+                                                        history.forEach(entry => {
+                                                            html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
+                                                        });
+
+                                                        // Final status
+                                                        if (isFullyReturned) {
+                                                            html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
+                                                        } else {
+                                                            html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
+                                                        }
+
+                                                        return html;
+                                                    })()}
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            ${transaction.notes ? `<div class="notes-section"><strong>Notes:</strong> ${transaction.notes}</div>` : ''}
+                        </div>
                     </div>
-                    <div class="info">
-                        <div class="info-row"><span class="label">Transaction Type:</span> ${transaction.transaction_type === 'take' ? 'TAKE' : 'RETURN'}</div>
-                        <div class="info-row"><span class="label">Status:</span> ${transaction.approval_status.toUpperCase()}</div>
-                        <div class="info-row"><span class="label">Date:</span> ${transaction.transaction_date}</div>
-                        <div class="info-row"><span class="label">Time:</span> ${transaction.transaction_time}</div>
-                        <div class="info-row"><span class="label">Requestor Name:</span> ${transaction.worker_name}</div>
-                        <div class="info-row"><span class="label">Requestor ID:</span> ${transaction.worker_id}</div>
-                    </div>
-                    <div class="materials">
-                        <h3>Materials</h3>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Material Name</th>
-                                    <th>Quantity</th>
-                                    <th>Unit</th>
-                                    <th>Reference #</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${transaction.materials?.map(m => `
-                                    <tr>
-                                        <td>${m.name}</td>
-                                        <td>${m.quantity}</td>
-                                        <td>${m.unit}</td>
-                                        <td>${m.reference_number || 'N/A'}</td>
-                                        <td>
-                                            ${(() => {
-                                                // For return transactions, show simple "Returned X/Y" format
-                                                if (transaction.transaction_type === 'return') {
-                                                    return `Returned ${m.return_quantity || m.quantity}/${m.quantity}`;
-                                                }
-
-                                                // For take transactions, show return history
-                                                if (!m.reference_number) {
-                                                    return 'Not Returned';
-                                                }
-
-                                                const history = returnHistoryMap.get(m.reference_number);
-                                                if (!history || history.length === 0) {
-                                                    return m.returned ? `Returned (${m.return_date})` : 'Not Returned';
-                                                }
-
-                                                const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
-                                                const remaining = m.quantity - totalReturned;
-                                                const isFullyReturned = remaining <= 0;
-
-                                                let html = '';
-                                                // Individual return entries
-                                                history.forEach(entry => {
-                                                    html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
-                                                });
-
-                                                // Final status
-                                                if (isFullyReturned) {
-                                                    html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
-                                                } else {
-                                                    html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
-                                                }
-
-                                                return html;
-                                            })()}
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    ${transaction.notes ? `<div style="margin-top: 20px;"><strong>Notes:</strong> ${transaction.notes}</div>` : ''}
                     ${transaction.approval_status !== 'pending' ? `
                         <div class="approval-info">
                             <strong>This request was ${transaction.approval_status === 'approved' ? 'APPROVED' : 'DECLINED'}</strong>
@@ -786,6 +948,8 @@ export default function AdminDashboard() {
     };
 
     const printBulk = async () => {
+        setIsBulkPrinting(true);
+        try {
         let transactionsToPrint = filteredTransactions;
 
         if (printStartDate || printEndDate || printWorkerId) {
@@ -855,101 +1019,287 @@ export default function AdminDashboard() {
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Transaction History</title>
+                    <title>Transaction History Report</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-                        .transaction { margin-bottom: 30px; page-break-inside: avoid; border: 1px solid #ddd; padding: 15px; }
-                        .info-row { margin-bottom: 5px; }
-                        .label { font-weight: bold; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
-                        th { background-color: #f2f2f2; }
-                        .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; }
-                        .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin-top: 5px; }
-                        .return-history { background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 4px; padding: 4px; margin: 2px 0; font-size: 10px; }
+                        body {
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            padding: 20px;
+                            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                            color: #333;
+                        }
+                        .report-container {
+                            max-width: 900px;
+                            margin: 0 auto;
+                            background: white;
+                            border-radius: 15px;
+                            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                            overflow: hidden;
+                        }
+                        .header {
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            text-align: center;
+                            padding: 30px;
+                            position: relative;
+                        }
+                        .header::before {
+                            content: '';
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            right: 0;
+                            bottom: 0;
+                            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+                        }
+                        .company-name {
+                            font-family: 'Calibri', 'Segoe UI', sans-serif;
+                            font-weight: 700;
+                            font-size: 28px;
+                            margin: 0;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                        }
+                        .company-address {
+                            font-family: 'Aptos Narrow', 'Segoe UI', sans-serif;
+                            font-size: 14px;
+                            margin: 8px 0 0 0;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                        }
+                        .report-title {
+                            font-size: 20px;
+                            font-weight: 600;
+                            margin-top: 15px;
+                            position: relative;
+                            z-index: 1;
+                            color: #b22222;
+                        }
+                        .report-meta {
+                            background: #f8f9fa;
+                            padding: 15px 30px;
+                            border-bottom: 1px solid #e9ecef;
+                            font-size: 14px;
+                            color: #495057;
+                        }
+                        .transaction {
+                            margin: 0;
+                            padding: 25px 30px;
+                            page-break-inside: avoid;
+                            border-bottom: 1px solid #e9ecef;
+                            background: #f8f9fa;
+                        }
+                        .transaction:nth-child(even) {
+                            background: white;
+                        }
+                        .transaction-header {
+                            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                            padding: 15px 20px;
+                            margin: -25px -30px 20px -30px;
+                            border-radius: 0 0 10px 10px;
+                            border-left: 4px solid #2196f3;
+                        }
+                        .info-row {
+                            margin-bottom: 8px;
+                            font-size: 14px;
+                        }
+                        .label {
+                            font-weight: 600;
+                            color: #495057;
+                            margin-right: 8px;
+                        }
+                        .value {
+                            color: #212529;
+                            font-weight: 500;
+                        }
+                        .materials-section {
+                            margin-top: 20px;
+                        }
+                        .materials-title {
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #495057;
+                            margin-bottom: 12px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 12px;
+                            background: white;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+                        }
+                        th {
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 12px 15px;
+                            text-align: left;
+                            font-weight: 600;
+                            font-size: 14px;
+                            text-transform: uppercase;
+                            letter-spacing: 0.5px;
+                        }
+                        td {
+                            border-bottom: 1px solid #e9ecef;
+                            padding: 12px 15px;
+                            vertical-align: top;
+                        }
+                        tr:nth-child(even) {
+                            background-color: #f8f9fa;
+                        }
+                        tr:hover {
+                            background-color: #e3f2fd;
+                            transition: background-color 0.2s ease;
+                        }
+                        .return-history {
+                            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                            border: 1px solid #90caf9;
+                            border-radius: 6px;
+                            padding: 6px 8px;
+                            margin: 3px 0;
+                            font-size: 11px;
+                            color: #1565c0;
+                        }
+                        .notes-section {
+                            background: #fff3cd;
+                            border: 1px solid #ffeaa7;
+                            border-radius: 8px;
+                            padding: 12px 15px;
+                            margin-top: 15px;
+                            color: #856404;
+                            font-size: 13px;
+                        }
+                        .notes-section strong {
+                            color: #533f00;
+                        }
+                        .approval-section {
+                            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+                            border: 1px solid #c3e6cb;
+                            border-radius: 8px;
+                            padding: 12px 15px;
+                            margin-top: 15px;
+                            color: #155724;
+                            font-size: 12px;
+                        }
+                        .approval-section strong {
+                            color: #0f5132;
+                        }
+                        .status-returned {
+                            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+                            color: #155724;
+                            padding: 4px 8px;
+                            border-radius: 4px;
+                            font-weight: 600;
+                            font-size: 12px;
+                        }
+                        .page-break {
+                            page-break-before: always;
+                        }
+                        @media print {
+                            body { background: white; padding: 10px; }
+                            .report-container { box-shadow: none; }
+                        }
                     </style>
                 </head>
                 <body>
-                    <div class="header">
-                        <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
-                        <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
-                        <h2>Transaction History Report</h2>
-                        ${printStartDate || printEndDate ? `<p>Period: ${printStartDate || 'Start'} to ${printEndDate || 'End'}</p>` : ''}
-                        ${printWorkerId ? `<p>Worker ID: ${printWorkerId}</p>` : ''}
-                    </div>
-                    ${transactionsToPrint.map(t => `
-                        <div class="transaction">
-                            <div class="info-row"><span class="label">Type:</span> ${t.transaction_type === 'take' ? 'TAKE' : 'RETURN'} | <span class="label">Status:</span> ${t.approval_status.toUpperCase()} | <span class="label">Date:</span> ${t.transaction_date} | <span class="label">Time:</span> ${t.transaction_time}</div>
-                            <div class="info-row"><span class="label">Worker:</span> ${t.worker_name} (ID: ${t.worker_id})</div>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Material</th>
-                                        <th>Quantity</th>
-                                        <th>Unit</th>
-                                        <th>Reference #</th>
-                                        <th>Return History</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${t.materials?.map(m => `
-                                        <tr>
-                                            <td>${m.name}</td>
-                                            <td>${m.quantity}</td>
-                                            <td>${m.unit}</td>
-                                            <td>${m.reference_number || 'N/A'}</td>
-                                            <td>
-                                                ${(() => {
-                                                    // For return transactions, show simple "Returned X/Y" format
-                                                    if (t.transaction_type === 'return') {
-                                                        return `Returned ${m.return_quantity || m.quantity}/${m.quantity}`;
-                                                    }
-
-                                                    // For take transactions, show return history
-                                                    if (!m.reference_number) {
-                                                        return 'Not Returned';
-                                                    }
-
-                                                    const history = returnHistoryMap.get(m.reference_number);
-                                                    if (!history || history.length === 0) {
-                                                        return m.returned ? `Returned (${m.return_date})` : 'Not Returned';
-                                                    }
-
-                                                    const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
-                                                    const remaining = m.quantity - totalReturned;
-                                                    const isFullyReturned = remaining <= 0;
-
-                                                    let html = '';
-                                                    // Individual return entries
-                                                    history.forEach(entry => {
-                                                        html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
-                                                    });
-
-                                                    // Final status
-                                                    if (isFullyReturned) {
-                                                        html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
-                                                    } else {
-                                                        html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
-                                                    }
-
-                                                    return html;
-                                                })()}
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                            ${t.notes ? `<div style="margin-top: 10px;"><strong>Notes:</strong> ${t.notes}</div>` : ''}
-                            ${t.approval_status !== 'pending' ? `<div style="margin-top: 10px; font-size: 11px; color: #666; border-top: 1px solid #ddd; padding-top: 5px;"><strong>${t.approval_status === 'approved' ? 'APPROVED' : 'DECLINED'}</strong> by ${t.approved_by || 'Unknown'} on ${t.approval_date || 'Unknown date'}</div>` : ''}
+                    <div class="report-container">
+                        <div class="header">
+                            <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
+                            <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
+                            <h2 class="report-title">Transaction History Report</h2>
                         </div>
-                    `).join('')}
+                        <div class="report-meta">
+                            ${printStartDate || printEndDate ? `<strong>Period:</strong> ${printStartDate || 'Start'} to ${printEndDate || 'End'}` : ''}
+                            ${printWorkerId ? ` | <strong>Worker ID:</strong> ${printWorkerId}` : ''}
+                        </div>
+                        ${transactionsToPrint.map((t, index) => `
+                            <div class="transaction">
+                                <div class="transaction-header">
+                                    <div class="info-row"><span class="label">Type:</span> <span class="value">${t.transaction_type === 'take' ? 'TAKE' : 'RETURN'}</span> | <span class="label">Status:</span> <span class="value">${t.approval_status.toUpperCase()}</span></div>
+                                    <div class="info-row"><span class="label">Date:</span> <span class="value">${t.transaction_date}</span> | <span class="label">Time:</span> <span class="value">${t.transaction_time}</span></div>
+                                    <div class="info-row"><span class="label">Worker:</span> <span class="value">${t.worker_name} (ID: ${t.worker_id})</span></div>
+                                </div>
+                                <div class="materials-section">
+                                    <h3 class="materials-title">Materials</h3>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Material Name</th>
+                                                <th>Quantity</th>
+                                                <th>Unit</th>
+                                                <th>Reference #</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${t.materials?.map(m => `
+                                                <tr>
+                                                    <td>${m.name}</td>
+                                                    <td>${m.quantity}</td>
+                                                    <td>${m.unit}</td>
+                                                    <td>${m.reference_number || 'N/A'}</td>
+                                                    <td>
+                                                        ${(() => {
+                                                            // For return transactions, show simple "Returned X/Y" format
+                                                            if (t.transaction_type === 'return') {
+                                                                return `<span class="status-returned">Returned ${m.return_quantity || m.quantity}/${m.quantity}</span>`;
+                                                            }
+
+                                                            // For take transactions, show return history
+                                                            if (!m.reference_number) {
+                                                                return 'Not Returned';
+                                                            }
+
+                                                            const history = returnHistoryMap.get(m.reference_number);
+                                                            if (!history || history.length === 0) {
+                                                                return m.returned ? `Returned (${m.return_date})` : 'Taken to Site<br>Not Returned';
+                                                            }
+
+                                                            const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
+                                                            const remaining = m.quantity - totalReturned;
+                                                            const isFullyReturned = remaining <= 0;
+
+                                                            let html = '';
+                                                            // Individual return entries
+                                                            history.forEach(entry => {
+                                                                html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
+                                                            });
+
+                                                            // Final status
+                                                            if (isFullyReturned) {
+                                                                html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
+                                                            } else {
+                                                                html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
+                                                            }
+
+                                                            return html;
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                ${t.notes ? `<div class="notes-section"><strong>Notes:</strong> ${t.notes}</div>` : ''}
+                                ${t.approval_status !== 'pending' ? `<div class="approval-section"><strong>${t.approval_status === 'approved' ? 'APPROVED' : 'DECLINED'}</strong> by ${t.approved_by || 'Unknown'} on ${t.approval_date || 'Unknown date'}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
                 </body>
             </html>
         `);
         printWindow.document.close();
         printWindow.print();
         setShowPrintDialog(false);
+        } catch (error) {
+            console.error('Error during bulk print:', error);
+            toast.error('Failed to generate bulk print. Please try again.');
+        } finally {
+            setIsBulkPrinting(false);
+        }
     };
 
     const toggleCardExpansion = (transactionId) => {
@@ -1419,12 +1769,22 @@ export default function AdminDashboard() {
                         >
                             Cancel
                         </Button>
-                        <Button 
+                        <Button
                             onClick={printBulk}
+                            disabled={isBulkPrinting}
                             className="bg-slate-700 hover:bg-slate-800"
                         >
-                            <Printer className="w-4 h-4 mr-2" />
-                            Print
+                            {isBulkPrinting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <Printer className="w-4 h-4 mr-2" />
+                                    Print
+                                </>
+                            )}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
