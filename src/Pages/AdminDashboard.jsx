@@ -676,8 +676,11 @@ export default function AdminDashboard() {
             }
         }
 
-        // Set filename for PDF save
-        const fileName = `${transaction.worker_id}_${transaction.transaction_date}_${transaction.transaction_time.replace(/:/g, '-')}`;
+        // Set filename for PDF save: ID number dd/mm/yy time
+        const [year, month, day] = transaction.transaction_date.split('-');
+        const shortYear = year.slice(-2); // Get last 2 digits of year
+        const formattedDate = `${day}/${month}/${shortYear}`;
+        const fileName = `${transaction.worker_id} ${formattedDate} ${transaction.transaction_time}`;
 
         const printWindow = window.open('', '', 'height=600,width=800');
         printWindow.document.write(`
