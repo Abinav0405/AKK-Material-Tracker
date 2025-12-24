@@ -26,6 +26,124 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from 'xlsx';
 import { toast } from "sonner";
 import { sendBrowserNotification } from "@/lib/emailNotification";
+// Component to display GitHub-style commit history for returns
+const ReturnHistoryDisplay = ({ referenceNumber, totalQuantity, materialName, materialUnit }) => {
+    const [returnHistory, setReturnHistory] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        const fetchReturnHistory = async () => {
+            try {
+                const { data: returns, error } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('transaction_type', 'return')
+                    .eq('approval_status', 'approved')
+                    .order('created_at', { ascending: true }); // Chronological order
+
+                if (error) throw error;
+
+                // Filter returns for this specific reference number
+                const relevantReturns = returns.filter(transaction =>
+                    transaction.materials?.some(material =>
+                        material.reference_number === referenceNumber
+                    )
+                );
+
+                // Extract individual return entries
+                const history = [];
+                relevantReturns.forEach(transaction => {
+                    const materialReturn = transaction.materials?.find(m =>
+                        m.reference_number === referenceNumber
+                    );
+                    if (materialReturn && materialReturn.return_quantity > 0) {
+                        history.push({
+                            returner: transaction.worker_name,
+                            quantity: materialReturn.return_quantity,
+                            date: transaction.transaction_date,
+                            time: transaction.transaction_time,
+                            transactionId: transaction.id
+                        });
+                    }
+                });
+
+                setReturnHistory(history);
+            } catch (error) {
+                console.error('Error fetching return history:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (referenceNumber) {
+            fetchReturnHistory();
+        }
+    }, [referenceNumber]);
+
+    if (loading) {
+        return (
+            <div className="bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                <div className="text-blue-700 font-medium text-xs">Loading return history...</div>
+            </div>
+        );
+    }
+
+    if (returnHistory.length === 0) {
+        return (
+            <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
+                <div className="text-yellow-700 font-medium">
+                    ⏳ Not returned
+                </div>
+                <div className="text-yellow-600 text-xs mt-1">
+                    Remaining qty to return: {totalQuantity}/{totalQuantity}
+                </div>
+            </div>
+        );
+    }
+
+    // Calculate total returned and remaining
+    const totalReturned = returnHistory.reduce((sum, entry) => sum + entry.quantity, 0);
+    const remaining = totalQuantity - totalReturned;
+    const isFullyReturned = remaining <= 0;
+
+    return (
+        <div className="space-y-1">
+            {/* Individual return entries */}
+            {returnHistory.map((entry, index) => (
+                <div key={entry.transactionId} className="bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                    <div className="text-blue-700 font-medium">
+                        🔄 Returned {entry.quantity}/{totalQuantity} {materialName} by {entry.returner}
+                    </div>
+                    <div className="text-blue-600 text-xs mt-1">
+                        on {entry.date} at {entry.time}
+                    </div>
+                </div>
+            ))}
+
+            {/* Final status */}
+            {isFullyReturned ? (
+                <div className="bg-green-50 border border-green-200 rounded px-2 py-1">
+                    <div className="text-green-700 font-medium">
+                        ✅ Fully returned {totalQuantity}/{totalQuantity} {materialName}
+                    </div>
+                    <div className="text-green-600 text-xs mt-1">
+                        All materials returned
+                    </div>
+                </div>
+            ) : (
+                <div className="bg-orange-50 border border-orange-200 rounded px-2 py-1">
+                    <div className="text-orange-700 font-medium">
+                        🔄 Partially returned {totalReturned}/{totalQuantity} {materialName}
+                    </div>
+                    <div className="text-orange-600 text-xs mt-1">
+                        Remaining qty to return: {remaining}/{totalQuantity}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 import MaterialForm from "@/Components/MaterialForm";
 
 export default function AdminDashboard() {
@@ -504,7 +622,50 @@ export default function AdminDashboard() {
         XLSX.writeFile(workbook, `AKK_Materials_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
     };
 
-    const printTransaction = (transaction) => {
+    const printTransaction = async (transaction) => {
+        // Fetch return history for materials that have reference numbers
+        const returnHistoryMap = new Map();
+
+        for (const material of transaction.materials || []) {
+            if (material.reference_number && transaction.transaction_type === 'take') {
+                try {
+                    const { data: returns, error } = await supabase
+                        .from('transactions')
+                        .select('*')
+                        .eq('transaction_type', 'return')
+                        .eq('approval_status', 'approved')
+                        .order('created_at', { ascending: true });
+
+                    if (!error && returns) {
+                        const relevantReturns = returns.filter(t =>
+                            t.materials?.some(m => m.reference_number === material.reference_number)
+                        );
+
+                        const history = [];
+                        relevantReturns.forEach(t => {
+                            const returnMaterial = t.materials?.find(m =>
+                                m.reference_number === material.reference_number
+                            );
+                            if (returnMaterial && returnMaterial.return_quantity > 0) {
+                                history.push({
+                                    returner: t.worker_name,
+                                    quantity: returnMaterial.return_quantity,
+                                    date: t.transaction_date,
+                                    time: t.transaction_time
+                                });
+                            }
+                        });
+
+                        if (history.length > 0) {
+                            returnHistoryMap.set(material.reference_number, history);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error fetching return history for print:', error);
+                }
+            }
+        }
+
         const printWindow = window.open('', '', 'height=600,width=800');
         printWindow.document.write(`
             <html>
@@ -521,8 +682,9 @@ export default function AdminDashboard() {
                         .label { font-weight: bold; width: 150px; }
                         .materials { margin-top: 20px; }
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
                         th { background-color: #f2f2f2; }
+                        .return-history { background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 4px; padding: 4px; margin: 2px 0; font-size: 10px; }
                         .approval-info { position: absolute; bottom: 40px; left: 40px; text-align: left; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 10px; max-width: 300px; }
                         .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; margin: 0; }
                         .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin: 5px 0 0 0; }
@@ -535,7 +697,7 @@ export default function AdminDashboard() {
                             <h1 class="company-name">AKK ENGINEERING PTE. LTD.</h1>
                             <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
                         </div>
-                        <h2>Transaction Receipt</h2>
+                        <h2>Material Transaction Receipt</h2>
                     </div>
                     <div class="info">
                         <div class="info-row"><span class="label">Transaction Type:</span> ${transaction.transaction_type === 'take' ? 'TAKE' : 'RETURN'}</div>
@@ -547,28 +709,64 @@ export default function AdminDashboard() {
                     </div>
                     <div class="materials">
                         <h3>Materials</h3>
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Material Name</th>
-                                                <th>Quantity</th>
-                                                <th>Unit</th>
-                                                <th>Reference #</th>
-                                                <th>Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${transaction.materials?.map(m => `
-                                                <tr>
-                                                    <td>${m.name}</td>
-                                                    <td>${m.quantity}</td>
-                                                    <td>${m.unit}</td>
-                                                    <td>${m.reference_number || 'N/A'}</td>
-                                                    <td>${m.returned ? `Returned (${m.return_date})` : 'Not Returned'}</td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Material Name</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Reference #</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transaction.materials?.map(m => `
+                                    <tr>
+                                        <td>${m.name}</td>
+                                        <td>${m.quantity}</td>
+                                        <td>${m.unit}</td>
+                                        <td>${m.reference_number || 'N/A'}</td>
+                                        <td>
+                                            ${(() => {
+                                                // For return transactions, show simple "Returned X/Y" format
+                                                if (transaction.transaction_type === 'return') {
+                                                    return `Returned ${m.return_quantity || m.quantity}/${m.quantity}`;
+                                                }
+
+                                                // For take transactions, show return history
+                                                if (!m.reference_number) {
+                                                    return 'Not Returned';
+                                                }
+
+                                                const history = returnHistoryMap.get(m.reference_number);
+                                                if (!history || history.length === 0) {
+                                                    return m.returned ? `Returned (${m.return_date})` : 'Not Returned';
+                                                }
+
+                                                const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
+                                                const remaining = m.quantity - totalReturned;
+                                                const isFullyReturned = remaining <= 0;
+
+                                                let html = '';
+                                                // Individual return entries
+                                                history.forEach(entry => {
+                                                    html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
+                                                });
+
+                                                // Final status
+                                                if (isFullyReturned) {
+                                                    html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
+                                                } else {
+                                                    html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
+                                                }
+
+                                                return html;
+                                            })()}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
                     </div>
                     ${transaction.notes ? `<div style="margin-top: 20px;"><strong>Notes:</strong> ${transaction.notes}</div>` : ''}
                     ${transaction.approval_status !== 'pending' ? `
@@ -587,13 +785,13 @@ export default function AdminDashboard() {
         printWindow.print();
     };
 
-    const printBulk = () => {
+    const printBulk = async () => {
         let transactionsToPrint = filteredTransactions;
-        
+
         if (printStartDate || printEndDate || printWorkerId) {
             transactionsToPrint = transactions.filter(t => {
                 let matches = true;
-                
+
                 if (printStartDate && t.transaction_date < printStartDate) {
                     matches = false;
                 }
@@ -603,9 +801,54 @@ export default function AdminDashboard() {
                 if (printWorkerId && t.worker_id !== printWorkerId) {
                     matches = false;
                 }
-                
+
                 return matches;
             });
+        }
+
+        // Fetch return history for all materials in bulk print
+        const returnHistoryMap = new Map();
+
+        for (const transaction of transactionsToPrint) {
+            for (const material of transaction.materials || []) {
+                if (material.reference_number && transaction.transaction_type === 'take') {
+                    try {
+                        const { data: returns, error } = await supabase
+                            .from('transactions')
+                            .select('*')
+                            .eq('transaction_type', 'return')
+                            .eq('approval_status', 'approved')
+                            .order('created_at', { ascending: true });
+
+                        if (!error && returns) {
+                            const relevantReturns = returns.filter(t =>
+                                t.materials?.some(m => m.reference_number === material.reference_number)
+                            );
+
+                            const history = [];
+                            relevantReturns.forEach(t => {
+                                const returnMaterial = t.materials?.find(m =>
+                                    m.reference_number === material.reference_number
+                                );
+                                if (returnMaterial && returnMaterial.return_quantity > 0) {
+                                    history.push({
+                                        returner: t.worker_name,
+                                        quantity: returnMaterial.return_quantity,
+                                        date: t.transaction_date,
+                                        time: t.transaction_time
+                                    });
+                                }
+                            });
+
+                            if (history.length > 0) {
+                                returnHistoryMap.set(material.reference_number, history);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error fetching return history for bulk print:', error);
+                    }
+                }
+            }
         }
 
         const printWindow = window.open('', '', 'height=600,width=800');
@@ -620,10 +863,11 @@ export default function AdminDashboard() {
                         .info-row { margin-bottom: 5px; }
                         .label { font-weight: bold; }
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
                         th { background-color: #f2f2f2; }
                         .company-name { font-family: Calibri, Candara, Segoe, Segoe UI, Optima, Arial, sans-serif; font-weight: bold; }
                         .company-address { font-family: 'Aptos Narrow', Aptos, 'Segoe UI', Arial, sans-serif; font-size: 12px; margin-top: 5px; }
+                        .return-history { background: #f0f8ff; border: 1px solid #b3d9ff; border-radius: 4px; padding: 4px; margin: 2px 0; font-size: 10px; }
                     </style>
                 </head>
                 <body>
@@ -632,7 +876,7 @@ export default function AdminDashboard() {
                         <p class="company-address">15 Kaki Bukit Rd 4, #01-50, Singapore 417808</p>
                         <h2>Transaction History Report</h2>
                         ${printStartDate || printEndDate ? `<p>Period: ${printStartDate || 'Start'} to ${printEndDate || 'End'}</p>` : ''}
-                        ${printWorkerId ? `<p>Worker ID: ${printWorkerId}</p>` : '<p>All Workers</p>'}
+                        ${printWorkerId ? `<p>Worker ID: ${printWorkerId}</p>` : ''}
                     </div>
                     ${transactionsToPrint.map(t => `
                         <div class="transaction">
@@ -645,7 +889,7 @@ export default function AdminDashboard() {
                                         <th>Quantity</th>
                                         <th>Unit</th>
                                         <th>Reference #</th>
-                                        <th>Status</th>
+                                        <th>Return History</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -655,7 +899,43 @@ export default function AdminDashboard() {
                                             <td>${m.quantity}</td>
                                             <td>${m.unit}</td>
                                             <td>${m.reference_number || 'N/A'}</td>
-                                            <td>${m.returned ? `Returned (${m.return_date})` : 'Not Returned'}</td>
+                                            <td>
+                                                ${(() => {
+                                                    // For return transactions, show simple "Returned X/Y" format
+                                                    if (t.transaction_type === 'return') {
+                                                        return `Returned ${m.return_quantity || m.quantity}/${m.quantity}`;
+                                                    }
+
+                                                    // For take transactions, show return history
+                                                    if (!m.reference_number) {
+                                                        return 'Not Returned';
+                                                    }
+
+                                                    const history = returnHistoryMap.get(m.reference_number);
+                                                    if (!history || history.length === 0) {
+                                                        return m.returned ? `Returned (${m.return_date})` : 'Not Returned';
+                                                    }
+
+                                                    const totalReturned = history.reduce((sum, entry) => sum + entry.quantity, 0);
+                                                    const remaining = m.quantity - totalReturned;
+                                                    const isFullyReturned = remaining <= 0;
+
+                                                    let html = '';
+                                                    // Individual return entries
+                                                    history.forEach(entry => {
+                                                        html += `<div class="return-history">🔄 Returned ${entry.quantity}/${m.quantity} ${m.name} by ${entry.returner}<br><small>on ${entry.date} at ${entry.time}</small></div>`;
+                                                    });
+
+                                                    // Final status
+                                                    if (isFullyReturned) {
+                                                        html += `<div class="return-history" style="background: #dcfce7; border-color: #bbf7d0;">✅ Fully returned ${m.quantity}/${m.quantity} ${m.name}<br><small>All materials returned</small></div>`;
+                                                    } else {
+                                                        html += `<div class="return-history" style="background: #fed7aa; border-color: #fdba74;">🔄 Partially returned ${totalReturned}/${m.quantity} ${m.name}<br><small>Remaining qty to return: ${remaining}/${m.quantity}</small></div>`;
+                                                    }
+
+                                                    return html;
+                                                })()}
+                                            </td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -1051,59 +1331,23 @@ export default function AdminDashboard() {
                                                                         </Badge>
                                                                     </div>
 
-                                                                {transaction.transaction_type === 'take' && (
-                                                                    <div className="text-xs text-slate-500 ml-2 space-y-2">
-                                                                        {/* Return attempt history - chronological like GitHub commits */}
-                                                                        {/* Note: material.return_declined indicates there was at least one declined attempt */}
-                                                                        {/* We show this as a separate status entry, but don't show quantity since declined attempts don't count */}
-                                                                        {material.return_declined && material.reference_number && (
-                                                                            <div className="bg-red-50 border border-red-200 rounded px-2 py-1">
-                                                                                <div className="text-red-700 font-medium">
-                                                                                    Return request declined by {material.return_declined_by} on {material.return_declined_date}
-                                                                                </div>
-                                                                                <div className="text-red-600 text-xs mt-1">
-                                                                                    Remaining qty to return: {material.quantity - (material.returned_quantity || 0)}/{material.quantity}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
+                                                                {transaction.transaction_type === 'take' && material.reference_number && (
+                                                                    <ReturnHistoryDisplay
+                                                                        referenceNumber={material.reference_number}
+                                                                        totalQuantity={material.quantity}
+                                                                        materialName={material.name}
+                                                                        materialUnit={material.unit}
+                                                                    />
+                                                                )}
 
-                                                                        {/* Current/Accepted returns */}
-                                                                        {material.reference_number ? (
-                                                                            material.returned ? (
-                                                                                <div className="bg-green-50 border border-green-200 rounded px-2 py-1">
-                                                                                    <div className="text-green-700 font-medium">
-                                                                                        ✅ Returned {material.returned_quantity || material.quantity}/{material.quantity} {material.name} on {material.return_date}
-                                                                                    </div>
-                                                                                </div>
-                                                                            ) : (material.returned_quantity || 0) > 0 ? (
-                                                                                <div className="bg-orange-50 border border-orange-200 rounded px-2 py-1">
-                                                                                    <div className="text-orange-700 font-medium">
-                                                                                        🔄 Returned {material.returned_quantity}/{material.quantity} {material.name}
-                                                                                    </div>
-                                                                                    <div className="text-orange-600 text-xs mt-1">
-                                                                                        Remaining qty to return: {material.quantity - (material.returned_quantity || 0)}/{material.quantity}
-                                                                                    </div>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="bg-yellow-50 border border-yellow-200 rounded px-2 py-1">
-                                                                                    <div className="text-yellow-700 font-medium">
-                                                                                        ⏳ Not returned
-                                                                                    </div>
-                                                                                    <div className="text-yellow-600 text-xs mt-1">
-                                                                                        Remaining qty to return: {material.quantity}/{material.quantity}
-                                                                                    </div>
-                                                                                </div>
-                                                                            )
-                                                                        ) : (
-                                                                            <div className="bg-gray-50 border border-gray-200 rounded px-2 py-1">
-                                                                                <div className="text-gray-700 font-medium">
-                                                                                    📦 {material.name} - No reference number
-                                                                                </div>
-                                                                                <div className="text-gray-600 text-xs mt-1">
-                                                                                    This material cannot be returned (missing reference number)
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
+                                                                {!material.reference_number && (
+                                                                    <div className="bg-gray-50 border border-gray-200 rounded px-2 py-1 ml-2">
+                                                                        <div className="text-gray-700 font-medium">
+                                                                            📦 {material.name} - No reference number
+                                                                        </div>
+                                                                        <div className="text-gray-600 text-xs mt-1">
+                                                                            This material cannot be returned (missing reference number)
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                                 </div>
