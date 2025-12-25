@@ -46,6 +46,7 @@ CREATE TABLE admin_status (
 );
 
 -- Create indexes for better performance
+CREATE INDEX idx_requesters_requester_id ON requesters(requester_id);
 CREATE INDEX idx_transactions_approval_status ON transactions(approval_status);
 CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
 CREATE INDEX idx_transactions_worker_id ON transactions(worker_id);

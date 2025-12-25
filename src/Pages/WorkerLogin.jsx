@@ -4,32 +4,61 @@ import { createPageUrl } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/Components/ui/card";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
-import { User, UserCheck, ArrowLeft, Loader2 } from "lucide-react";
+import { User, UserCheck, ArrowLeft, Loader2, Lock } from "lucide-react";
 import { motion } from "framer-motion";
+import { supabase } from "@/Components/supbase";
+import { toast } from "sonner";
 
 export default function WorkerLogin() {
-    const [workerName, setWorkerName] = useState("");
-    const [workerId, setWorkerId] = useState("");
+    const [requesterId, setRequesterId] = useState("");
+    const [password, setPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
         setIsLoading(true);
 
-        // Simple validation - just check if both fields are filled
-        if (!workerName.trim() || !workerId.trim()) {
+        try {
+            if (!requesterId.trim() || !password.trim()) {
+                toast.error("Please enter both Requester ID and Password");
+                setIsLoading(false);
+                return;
+            }
+
+            // Fetch requester from database
+            const { data: requester, error } = await supabase
+                .from('requesters')
+                .select('*')
+                .eq('requester_id', requesterId.trim())
+                .single();
+
+            if (error || !requester) {
+                toast.error("Invalid Requester ID or Password");
+                setIsLoading(false);
+                return;
+            }
+
+            // Verify password (plain text for testing)
+            if (password !== requester.password_hash) {
+                toast.error("Invalid Requester ID or Password");
+                setIsLoading(false);
+                return;
+            }
+
+            // Store requester info in sessionStorage
+            sessionStorage.setItem('workerLoggedIn', 'true');
+            sessionStorage.setItem('workerName', requester.name);
+            sessionStorage.setItem('workerId', requester.requester_id);
+
+            toast.success(`Welcome back, ${requester.name}!`);
             setIsLoading(false);
-            return;
+            navigate(createPageUrl('RequestPortal'));
+        } catch (error) {
+            console.error('Login error:', error);
+            toast.error("An error occurred during login");
+            setIsLoading(false);
         }
-
-        // Store worker info in sessionStorage
-        sessionStorage.setItem('workerLoggedIn', 'true');
-        sessionStorage.setItem('workerName', workerName.trim());
-        sessionStorage.setItem('workerId', workerId.trim());
-
-        setIsLoading(false);
-        navigate(createPageUrl('RequestPortal'));
     };
 
     return (
@@ -78,42 +107,42 @@ export default function WorkerLogin() {
                     {/* Form Section */}
                     <CardContent className="p-8">
                         <form onSubmit={handleLogin} className="space-y-6">
-                            {/* Name Field */}
+                            {/* Requester ID Field */}
                             <div className="space-y-2">
                                 <label
-                                    htmlFor="workerName"
+                                    htmlFor="requesterId"
                                     className="text-sm font-semibold text-slate-700 flex items-center gap-2"
                                 >
-                                    <User className="w-4 h-4" />
-                                    Full Name
+                                    <UserCheck className="w-4 h-4" />
+                                    Requester ID
                                 </label>
                                 <Input
-                                    id="workerName"
+                                    id="requesterId"
                                     type="text"
-                                    value={workerName}
-                                    onChange={(e) => setWorkerName(e.target.value)}
+                                    value={requesterId}
+                                    onChange={(e) => setRequesterId(e.target.value)}
                                     required
-                                    placeholder="Enter your full name"
+                                    placeholder="Enter your requester ID"
                                     className="h-12 text-base border-slate-200 focus:border-[#dc6b2f] focus:ring-[#dc6b2f]/20 transition-colors"
                                 />
                             </div>
 
-                            {/* ID Field */}
+                            {/* Password Field */}
                             <div className="space-y-2">
                                 <label
-                                    htmlFor="workerId"
+                                    htmlFor="password"
                                     className="text-sm font-semibold text-slate-700 flex items-center gap-2"
                                 >
-                                    <UserCheck className="w-4 h-4" />
-                                    User ID
+                                    <Lock className="w-4 h-4" />
+                                    Password
                                 </label>
                                 <Input
-                                    id="workerId"
-                                    type="text"
-                                    value={workerId}
-                                    onChange={(e) => setWorkerId(e.target.value)}
+                                    id="password"
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     required
-                                    placeholder="Enter your user ID"
+                                    placeholder="Enter your password"
                                     className="h-12 text-base border-slate-200 focus:border-[#dc6b2f] focus:ring-[#dc6b2f]/20 transition-colors"
                                 />
                             </div>
@@ -121,7 +150,7 @@ export default function WorkerLogin() {
                             {/* Submit Button */}
                             <Button
                                 type="submit"
-                                disabled={isLoading || !workerName.trim() || !workerId.trim()}
+                                disabled={isLoading || !requesterId.trim() || !password.trim()}
                                 className="w-full h-12 text-base font-semibold bg-[#dc6b2f] hover:bg-[#c85a23] text-white shadow-lg hover:shadow-xl transition-all duration-200"
                                 size="lg"
                             >

@@ -40,7 +40,7 @@ export default function Home() {
                 </div>
 
                 {/* Portal Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
                     {/* Worker Portal */}
                     <Link to={createPageUrl('WorkerLogin')}>
                         <motion.div
@@ -48,47 +48,21 @@ export default function Home() {
                             whileTap={{ scale: 0.98 }}
                         >
                             <Card className="cursor-pointer border-0 shadow-2xl bg-white overflow-hidden group h-full">
-                                <div className="p-8 md:p-10 text-center">
-                                    <div className="w-20 h-20 bg-[#dc6b2f]/10 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#dc6b2f]/20 transition-colors">
-                                        <ClipboardList className="w-10 h-10 text-[#dc6b2f]" />
+                                <div className="p-10 md:p-12 text-center">
+                                    <div className="w-24 h-24 bg-[#dc6b2f]/10 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#dc6b2f]/20 transition-colors">
+                                        <ClipboardList className="w-12 h-12 text-[#dc6b2f]" />
                                     </div>
-                                    <h3 className="text-2xl font-bold text-slate-800 mb-4">
-                                        Worker Portal
+                                    <h3 className="text-3xl font-bold text-slate-800 mb-4">
+                                        Fill Out Request
                                     </h3>
-                                    <p className="text-slate-600 text-base mb-6">
-                                        Submit material take or return requests
+                                    <p className="text-slate-600 text-lg mb-8">
+                                        Submit material take or return requests and view your request history
                                     </p>
-                                    <Button className="bg-[#dc6b2f] hover:bg-[#c85a23] text-white px-6 py-4 text-base">
-                                        Worker Login
+                                    <Button className="bg-[#dc6b2f] hover:bg-[#c85a23] text-white px-8 py-6 text-lg">
+                                        Enter Portal
                                     </Button>
                                 </div>
                                 <div className="h-3 bg-[#dc6b2f]" />
-                            </Card>
-                        </motion.div>
-                    </Link>
-
-                    {/* Requestor Portal */}
-                    <Link to={createPageUrl('RequestorLogin')}>
-                        <motion.div
-                            whileHover={{ scale: 1.03, y: -8 }}
-                            whileTap={{ scale: 0.98 }}
-                        >
-                            <Card className="cursor-pointer border-0 shadow-2xl bg-white overflow-hidden group h-full">
-                                <div className="p-8 md:p-10 text-center">
-                                    <div className="w-20 h-20 bg-green-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-500/20 transition-colors">
-                                        <ClipboardList className="w-10 h-10 text-green-600" />
-                                    </div>
-                                    <h3 className="text-2xl font-bold text-slate-800 mb-4">
-                                        Requestor Portal
-                                    </h3>
-                                    <p className="text-slate-600 text-base mb-6">
-                                        View and manage your material requests
-                                    </p>
-                                    <Button className="bg-green-600 hover:bg-green-700 text-white px-6 py-4 text-base">
-                                        Requestor Login
-                                    </Button>
-                                </div>
-                                <div className="h-3 bg-green-600" />
                             </Card>
                         </motion.div>
                     </Link>
@@ -100,17 +74,17 @@ export default function Home() {
                             whileTap={{ scale: 0.98 }}
                         >
                             <Card className="cursor-pointer border-0 shadow-2xl bg-white overflow-hidden group h-full">
-                                <div className="p-8 md:p-10 text-center">
-                                    <div className="w-20 h-20 bg-slate-700/10 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:bg-slate-700/20 transition-colors">
-                                        <Shield className="w-10 h-10 text-slate-700" />
+                                <div className="p-10 md:p-12 text-center">
+                                    <div className="w-24 h-24 bg-slate-700/10 rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:bg-slate-700/20 transition-colors">
+                                        <Shield className="w-12 h-12 text-slate-700" />
                                     </div>
-                                    <h3 className="text-2xl font-bold text-slate-800 mb-4">
-                                        Admin Portal
+                                    <h3 className="text-3xl font-bold text-slate-800 mb-4">
+                                        Admin
                                     </h3>
-                                    <p className="text-slate-600 text-base mb-6">
-                                        Manage requests and access full history
+                                    <p className="text-slate-600 text-lg mb-8">
+                                        Manage requests, approve or decline, and access full history
                                     </p>
-                                    <Button className="bg-slate-700 hover:bg-slate-800 text-white px-6 py-4 text-base">
+                                    <Button className="bg-slate-700 hover:bg-slate-800 text-white px-8 py-6 text-lg">
                                         Admin Login
                                     </Button>
                                 </div>
