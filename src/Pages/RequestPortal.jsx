@@ -17,10 +17,11 @@ export default function RequestPortal() {
 
     // Check authentication on component mount
     useEffect(() => {
+        const requesterLoggedIn = sessionStorage.getItem('requesterLoggedIn');
         const workerLoggedIn = sessionStorage.getItem('workerLoggedIn');
-        if (!workerLoggedIn) {
-            // Redirect to worker login if not authenticated
-            window.location.href = createPageUrl('WorkerLogin');
+        if (!requesterLoggedIn && !workerLoggedIn) {
+            // Redirect to requestor login if not authenticated
+            window.location.href = createPageUrl('RequestorLogin');
         }
     }, []);
 

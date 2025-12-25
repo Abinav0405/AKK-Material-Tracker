@@ -12,6 +12,7 @@ import AdminDashboard from './Pages/AdminDashboard'
 import History from './Pages/History'
 import RequestHistory from './Pages/RequestHistory'
 import WorkerLogin from './Pages/WorkerLogin'
+import RequestorLogin from './Pages/RequestorLogin'
 
 const queryClient = new QueryClient()
 
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/Home" element={<Home />} />
           <Route path="/RequestPortal" element={<RequestPortal />} />
           <Route path="/WorkerLogin" element={<WorkerLogin />} />
+          <Route path="/RequestorLogin" element={<RequestorLogin />} />
           <Route path="/AdminLogin" element={<AdminLogin />} />
           <Route path="/AdminDashboard" element={<AdminDashboard />} />
           <Route path="/History" element={<History />} />

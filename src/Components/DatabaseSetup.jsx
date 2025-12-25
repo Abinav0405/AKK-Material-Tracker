@@ -9,6 +9,15 @@
 
 /*
 
+-- Create requesters table
+CREATE TABLE requesters (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  requester_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create transactions table
 CREATE TABLE transactions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -43,10 +52,14 @@ CREATE INDEX idx_transactions_worker_id ON transactions(worker_id);
 CREATE INDEX idx_admin_status_is_online ON admin_status(is_online);
 
 -- Enable Row Level Security (RLS)
+ALTER TABLE requesters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_status ENABLE ROW LEVEL SECURITY;
 
 -- Create policies to allow all operations (customize for production)
+CREATE POLICY "Enable all operations for requesters" ON requesters
+  FOR ALL USING (true) WITH CHECK (true);
+
 CREATE POLICY "Enable all operations for transactions" ON transactions
   FOR ALL USING (true) WITH CHECK (true);
 
