@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from 'xlsx';
 import { toast } from "sonner";
 import { sendBrowserNotification } from "@/lib/emailNotification";
+import RequestersManager from "@/Components/RequestersManager";
 // Component to display GitHub-style commit history for returns
 const ReturnHistoryDisplay = ({ referenceNumber, totalQuantity, materialName, materialUnit }) => {
     const [returnHistory, setReturnHistory] = React.useState([]);
@@ -148,6 +149,7 @@ import MaterialForm from "@/Components/MaterialForm";
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
+    const [activeTab, setActiveTab] = useState('transactions');
     const [filter, setFilter] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [dateFilter, setDateFilter] = useState('all');
@@ -502,7 +504,10 @@ export default function AdminDashboard() {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: async (id) => {
+        mutationFn: async ({ id, password }) => {
+            if (password !== '722379') {
+                throw new Error('Incorrect password');
+            }
             const { error } = await supabase
                 .from('transactions')
                 .delete()
@@ -512,11 +517,15 @@ export default function AdminDashboard() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['transactions'] });
             setEditingTransaction(null);
+            toast.success('Transaction deleted successfully');
+        },
+        onError: (error) => {
+            toast.error(error.message || 'Failed to delete transaction');
         },
     });
 
     const handleDeleteHistory = () => {
-        if (password === '1432') {
+        if (password === '722379') {
             setPasswordError('');
             deleteAllMutation.mutate();
         } else {
@@ -1433,16 +1442,32 @@ export default function AdminDashboard() {
                         <div className="space-y-4">
                             <div className="flex flex-col sm:flex-row gap-4 items-center">
                                 <div className="relative flex-1 w-full">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                                     <Input
-                                        placeholder="Search by name, ID, material, or reference #..."
+                                        className="pl-10 w-[300px]"
+                                        placeholder="Search by name, ID, or material..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="pl-10 border-slate-200"
                                     />
                                 </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-4 items-center flex-wrap">
+                                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                                    <TabsList>
+                                        <TabsTrigger 
+                                            value="transactions" 
+                                            data-state={activeTab === 'transactions' ? 'active' : 'inactive'}
+                                        >
+                                            Transactions
+                                        </TabsTrigger>
+                                        <TabsTrigger 
+                                            value="requesters" 
+                                            data-state={activeTab === 'requesters' ? 'active' : 'inactive'}
+                                        >
+                                            Manage Requesters
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
                                 <Tabs value={filter} onValueChange={setFilter}>
                                     <TabsList className="bg-slate-100">
                                         <TabsTrigger value="all">All Types</TabsTrigger>
@@ -1489,7 +1514,9 @@ export default function AdminDashboard() {
             {/* Transactions List */}
             <div className="max-w-6xl mx-auto px-4 pb-8">
                 <AnimatePresence mode="wait">
-                    {editingTransaction ? (
+                    {activeTab === 'requesters' ? (
+                        <RequestersManager />
+                    ) : editingTransaction ? (
                         <MaterialForm
                             key={editingTransaction.id}
                             type={editingTransaction.transaction_type}
@@ -1497,7 +1524,18 @@ export default function AdminDashboard() {
                             existingTransaction={editingTransaction}
                             onBack={() => setEditingTransaction(null)}
                             onSuccess={handleEditSuccess}
-                            onDelete={() => deleteMutation.mutate(editingTransaction.id)}
+                            onDelete={async () => {
+                                const password = prompt('Please enter the delete password:');
+                                if (password) {
+                                    try {
+                                        await deleteMutation.mutateAsync({ id: editingTransaction.id, password });
+                                    } catch (error) {
+                                        // Error is already handled by the mutation
+                                    }
+                                } else if (password === '') {
+                                    toast.error('Password is required');
+                                }
+                            }}
                         />
                     ) : isLoading ? (
                         <div className="flex items-center justify-center py-20">
@@ -1582,9 +1620,18 @@ export default function AdminDashboard() {
                                                         <Button
                                                             size="sm"
                                                             variant="destructive"
-                                                            onClick={() => {
-                                                                if (window.confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
-                                                                    deleteMutation.mutate(transaction.id);
+                                                            onClick={async () => {
+                                                                const password = prompt('Please enter the delete password:');
+                                                                if (password) {
+                                                                    if (window.confirm('Are you sure you want to delete this request? This action cannot be undone.')) {
+                                                                        try {
+                                                                            await deleteMutation.mutateAsync({ id: transaction.id, password });
+                                                                        } catch (error) {
+                                                                            // Error is already handled by the mutation
+                                                                        }
+                                                                    }
+                                                                } else if (password === '') {
+                                                                    toast.error('Password is required');
                                                                 }
                                                             }}
                                                             disabled={deleteMutation.isPending}
@@ -1609,7 +1656,8 @@ export default function AdminDashboard() {
                                                         </div>
                                                         <div className="space-y-1">
                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                <Badge variant={transaction.transaction_type === 'return' ? 'default' : 'secondary'}
+                                                                <Badge
+                                                                    variant={transaction.transaction_type === 'return' ? 'default' : 'secondary'}
                                                                     className={transaction.transaction_type === 'return'
                                                                         ? 'bg-emerald-600'
                                                                         : 'bg-[#f97316] text-white'
